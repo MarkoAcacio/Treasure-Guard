@@ -83,7 +83,7 @@
       <td>{{ f.customer_id or '—' }}</td>
       <td>{{ f.merchant_id or '—' }}</td>
       <td>{{ f.category }}</td>
-      <td class="num">{{ '%.2f' % f.amount }}</td>
+      <td class="num">${{ '%.2f' % f.amount }}</td>
       <td>{{ f.reason }}</td>
       <td>{{ status_names[f.status] }}</td>
       <td>
