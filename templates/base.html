@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Treasury Guard{% endblock %} · Treasury Guard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="layout">
+    <nav>
+      <h1>Treasury Guard</h1>
+      <p>Increment 2</p>
+      <ul>
+        <li><a href="{{ url_for('dashboard') }}">Anomaly flags</a></li>
+        <li><a href="{{ url_for('rules') }}">Detection rules</a></li>
+      </ul>
+      <p>Later increments</p>
+      <ul>
+        {% for slug, name in later_modules.items() %}
+        <li><a href="{{ url_for('later', slug=slug) }}">{{ name }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

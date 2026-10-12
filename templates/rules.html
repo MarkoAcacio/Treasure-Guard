@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Detection rules{% endblock %}
+{% block content %}
+<h2>Detection rules</h2>
+<p>Saving re-runs detection on all transactions. Flags that still trigger keep their review status.</p>
+{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
+
+<form method="post">
+  <fieldset>
+    <legend>Duplicate charge</legend>
+    <p><label for="dup_window_hours">Time window (hours)</label><br>
+      <input id="dup_window_hours" name="dup_window_hours" type="number" min="1" step="1" value="{{ settings.dup_window_hours }}"></p>
+    <p><label for="dup_tolerance_pct">Amount tolerance (%)</label><br>
+      <input id="dup_tolerance_pct" name="dup_tolerance_pct" type="number" min="0" max="50" step="0.5" value="{{ settings.dup_tolerance_pct }}"></p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Unusual outflows</legend>
+    <p><label for="large_limit">Flag amounts at or above</label><br>
+      <input id="large_limit" name="large_limit" type="number" min="0" step="0.01" value="{{ settings.large_limit }}"></p>
+    <p><label for="small_limit">Flag amounts at or below</label><br>
+      <input id="small_limit" name="small_limit" type="number" min="0" step="0.01" value="{{ settings.small_limit }}"></p>
+    <p>Amounts in this dataset range from 10.01 to 99.89.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Category spending spike</legend>
+    <p><label for="spike_multiplier">Times the monthly daily average</label><br>
+      <input id="spike_multiplier" name="spike_multiplier" type="number" min="1" step="0.1" value="{{ settings.spike_multiplier }}"></p>
+  </fieldset>
+
+  <p>
+    <button type="submit">Save and re-run</button>
+    <button type="submit" name="reset" value="1">Use defaults</button>
+  </p>
+</form>
+{% endblock %}

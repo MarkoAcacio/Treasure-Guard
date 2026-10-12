@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local SQLite database (flags are re-created by running detection)
+instance/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

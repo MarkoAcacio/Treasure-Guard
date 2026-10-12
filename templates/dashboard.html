@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Anomaly flags{% endblock %}
+{% block content %}
+<h2>Anomaly flags</h2>
+<p>
+  Kaggle Fraud Detection Dataset · {{ scanned }} transactions scanned ·
+  {% if last_run %}last run {{ last_run.ran_at.replace('T', ' ') }}{% else %}not run yet{% endif %}
+</p>
+<form method="post" action="{{ url_for('run') }}">
+  <button type="submit">Run detection</button>
+</form>
+
+<h3>Summary</h3>
+<table>
+  <thead>
+    <tr><th>Rule</th><th>Setting</th><th>Flags</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Duplicate charge</td>
+      <td>Same customer, amounts within {{ settings.dup_tolerance_pct }}%, at most {{ settings.dup_window_hours }} hours apart</td>
+      <td>{{ counts.get('duplicate', 0) }}</td>
+    </tr>
+    <tr>
+      <td>Large outflow</td>
+      <td>Amount ≥ {{ '%.2f' % settings.large_limit }}</td>
+      <td>{{ counts.get('large', 0) }}</td>
+    </tr>
+    <tr>
+      <td>Small outflow</td>
+      <td>Amount ≤ {{ '%.2f' % settings.small_limit }}</td>
+      <td>{{ counts.get('small', 0) }}</td>
+    </tr>
+    <tr>
+      <td>Category spike</td>
+      <td>Day's category spend ≥ {{ settings.spike_multiplier }}× its monthly daily average</td>
+      <td>{{ counts.get('spike', 0) }}</td>
+    </tr>
+    <tr>
+      <th>Total</th><td></td><th>{{ total }}</th>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Flagged transactions</h3>
+<form method="get" action="{{ url_for('dashboard') }}">
+  <label for="type">Rule</label>
+  <select id="type" name="type">
+    <option value="">All rules</option>
+    {% for key, name in rule_names.items() %}
+    <option value="{{ key }}" {% if key == selected_type %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  <label for="status">Status</label>
+  <select id="status" name="status">
+    <option value="">Any status</option>
+    {% for key, name in status_names.items() %}
+    <option value="{{ key }}" {% if key == selected_status %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+</form>
+<p>Showing {{ flags|length }} of {{ total }} flags</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr>
+      <th>Rule</th><th>Date</th><th>Transaction</th><th>Customer</th><th>Merchant</th>
+      <th>Category</th><th>Amount</th><th>Why it was flagged</th><th>Status</th><th>Review</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in flags %}
+    <tr>
+      <td>{{ rule_names[f.type] }}</td>
+      <td>{{ f.timestamp }}</td>
+      <td>
+        {% if f.type == 'duplicate' %}#{{ f.txn_ids[0] }} → #{{ f.txn_ids[1] }}
+        {% elif f.type == 'spike' %}{{ f.txn_ids|length }} transactions
+        {% else %}#{{ f.txn_ids[0] }}{% endif %}
+      </td>
+      <td>{{ f.customer_id or '—' }}</td>
+      <td>{{ f.merchant_id or '—' }}</td>
+      <td>{{ f.category }}</td>
+      <td class="num">{{ '%.2f' % f.amount }}</td>
+      <td>{{ f.reason }}</td>
+      <td>{{ status_names[f.status] }}</td>
+      <td>
+        <form method="post" action="{{ url_for('update_status', flag_id=f.id) }}">
+          {% if f.status != 'confirmed' %}<button name="status" value="confirmed">Confirm</button>{% endif %}
+          {% if f.status != 'dismissed' %}<button name="status" value="dismissed">Dismiss</button>{% endif %}
+          {% if f.status != 'new' %}<button name="status" value="new">Reopen</button>{% endif %}
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10">No flags match these filters.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

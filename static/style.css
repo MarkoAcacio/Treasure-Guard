@@ -1,0 +1,12 @@
+/* Barebones MVP styles: layout and table borders only. */
+body { font-family: system-ui, sans-serif; margin: 0; }
+.layout { display: flex; flex-wrap: wrap; }
+nav { flex: 0 0 220px; padding: 16px; border-right: 1px solid; }
+nav h1 { font-size: 1.2em; margin: 0 0 4px; }
+nav ul { padding-left: 18px; }
+main { flex: 1 1 600px; min-width: 0; padding: 16px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; margin-bottom: 16px; }
+th, td { border: 1px solid; padding: 6px 8px; text-align: left; vertical-align: top; }
+td.num { text-align: right; white-space: nowrap; }
+fieldset { margin-bottom: 12px; }
