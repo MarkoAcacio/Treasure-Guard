@@ -120,6 +120,24 @@ class AppTests(unittest.TestCase):
         self.assertEqual(model["status"], "ready")
         self.assertIn("fraud_classifier", model["models"])
 
+    def test_upload_page_two_steps(self):
+        self.client.post("/signup", data={"full_name": "Ana", "email": "up@example.com", "password": "password123",
+                                          "business_name": "Shop", "business_type": "Retail"})
+        page = self.client.get("/upload").get_data(as_text=True)
+        self.assertIn("Choose a file", page)
+        step2 = self.client.post("/upload", data={"file": (io.BytesIO(GOOD_CSV), "jan.csv")},
+                                 content_type="multipart/form-data").get_data(as_text=True)
+        self.assertIn("Match your columns", step2)
+        self.assertIn('value="Payee" selected', step2)
+        done = self.client.post("/upload/import", data={
+            "map_date": "Date", "map_amount": "Amount", "map_counterparty": "Payee",
+            "map_category": "Category", "map_reference": "Ref"}).get_data(as_text=True)
+        self.assertIn("Upload complete", done)
+        self.assertIn("<td>3</td>", done)  # imported rows
+        self.assertIn("jan.csv", self.client.get("/upload").get_data(as_text=True))
+        again = self.client.post("/upload/import", data={"map_date": "Date", "map_amount": "Amount"})
+        self.assertIn("expired", again.get_data(as_text=True))
+
     def test_existing_pages_still_work(self):
         self.assertEqual(self.client.get("/").status_code, 302)  # sends to login
         signup = self.client.post("/signup", data={

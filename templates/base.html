@@ -13,7 +13,9 @@
       <p>Increment 2</p>
       <ul>
         <li><a href="{{ url_for('dashboard') }}">Anomaly flags</a></li>
+        <li><a href="{{ url_for('upload_page') }}">Upload CSV</a></li>
         <li><a href="{{ url_for('rules') }}">Detection rules</a></li>
+        {% if current_business %}<li><a href="{{ url_for('logout_page') }}">Log out</a></li>{% endif %}
       </ul>
       <p>Later increments</p>
       <ul>

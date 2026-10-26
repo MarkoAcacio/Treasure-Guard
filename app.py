@@ -7,12 +7,15 @@ HTML pages (placeholders until the real frontend is built) plus a JSON API under
 """
 import os
 import secrets
+import time
 from pathlib import Path
 
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for
 
-from treasury_guard import accounts, database, demo_data, detection, flags, labels, settings, transactions
+from treasury_guard import (accounts, csv_import, database, demo_data, detection, flags, labels, settings,
+                            transactions)
 from treasury_guard.accounts import AccountError
+from treasury_guard.csv_import import CsvImportError
 from treasury_guard.api import api
 from treasury_guard.settings import SettingsError
 
@@ -174,6 +177,77 @@ def create_app(db_path=None):
                 detection.run_detection(g.db, bid)
                 return redirect(url_for("dashboard"))
         return render_template("rules.html", settings=current, error=error)
+
+    # ---------- CSV upload page (barebones, two steps: preview + column mapping, then import) ----------
+
+    pending_dir = Path(app.config["DB_PATH"]).parent / "pending_uploads"
+    PENDING_MAX_AGE = 3600  # seconds
+
+    def _pending_path(token):
+        if not token or not all(ch in "0123456789abcdef" for ch in token):
+            return None
+        return pending_dir / f"{token}.csv"
+
+    def _clear_old_pending():
+        if pending_dir.exists():
+            for f in pending_dir.glob("*.csv"):
+                if time.time() - f.stat().st_mtime > PENDING_MAX_AGE:
+                    f.unlink(missing_ok=True)
+
+    def _upload_page(**kwargs):
+        return render_template("upload.html", uploads=csv_import.list_uploads(g.db, g.business["id"]),
+                               fields=csv_import.FIELDS, **kwargs)
+
+    @app.get("/upload")
+    def upload_page():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        return _upload_page()
+
+    @app.post("/upload")
+    def upload_preview():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        file = request.files.get("file")
+        if not file or not file.filename:
+            return _upload_page(error="Choose a CSV file first.")
+        content = file.read()
+        try:
+            preview = csv_import.preview_csv(content)
+        except CsvImportError as e:
+            return _upload_page(error=str(e))
+        _clear_old_pending()
+        pending_dir.mkdir(parents=True, exist_ok=True)
+        token = secrets.token_hex(16)
+        _pending_path(token).write_bytes(content)
+        session["pending_upload"] = {"token": token, "filename": file.filename}
+        return _upload_page(preview=preview, filename=file.filename)
+
+    @app.post("/upload/import")
+    def upload_import():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        pending = session.get("pending_upload") or {}
+        path = _pending_path(pending.get("token"))
+        if not path or not path.exists():
+            return _upload_page(error="That upload expired. Choose the file again.")
+        mapping = {field: request.form.get(f"map_{field}", "") for field in csv_import.FIELDS}
+        content = path.read_bytes()
+        try:
+            summary = csv_import.import_csv(g.db, g.business["id"], pending["filename"], content, mapping)
+        except CsvImportError as e:
+            preview = csv_import.preview_csv(content)
+            preview["suggested_mapping"] = {k: v for k, v in mapping.items() if v}
+            return _upload_page(error=str(e), preview=preview, filename=pending["filename"])
+        path.unlink(missing_ok=True)
+        session.pop("pending_upload", None)
+        result = detection.run_detection(g.db, g.business["id"])
+        found = {labels.FLAG_TYPE_NAMES.get(k, k): v for k, v in result["counts"].items()}
+        return _upload_page(summary=summary, found=found, found_total=result["total"])
+
+    @app.get("/template.csv")
+    def template_csv():
+        return redirect(url_for("api.upload_template"))
 
     @app.get("/later/<slug>")
     def later(slug):
