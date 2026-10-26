@@ -39,12 +39,23 @@ Flags are stored per business with a plain-language reason and a review status (
   Changing any of these by hand switches to "custom". Large/small payment limits are set from the business's own data (top and bottom 1% of payments) until the owner sets them.
 - **Severity score (0–100)** for every flag: a base score from how far past its threshold it is, plus 10 for each other check that flagged the same payment. 75+ is High, 50–74 Medium, below 50 Low.
 
-### AI model (Isolation Forest, trained on the Kaggle dataset)
-- **Model:** scikit-learn `IsolationForest` (200 trees), trained on the Kaggle data with `python -m treasury_guard.anomaly_model`. Saved to `models/isolation_forest.joblib`, with `models/model_card.json` describing the training data, features and evaluation. If the file is missing or made with another scikit-learn version, it retrains itself (about a second).
-- **Why unsupervised:** the Kaggle fraud labels are random (a supervised Random Forest scored ROC-AUC 0.43, worse than guessing), and owners' uploads have no labels. Isolation Forest learns what normal payments look like instead.
-- **Pre-processing:** only the needed columns are used (see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md)); each payment becomes four features compared with the business's own history, so the model works for any currency or business size.
-- **Flags:** "Unusual pattern (AI model)" for payments more unusual than the business's chosen percentile of its own payments (Low 99th, Balanced 97th, High 95th), with a plain-language reason. Needs at least 20 payments.
-- **Evaluation (in the model card):** on the Kaggle fraud labels, ROC-AUC ≈ 0.50 (expected, since the labels are random); on 60 injected unusual payments (very large, tiny test charges, quick repeats with a different amount), ROC-AUC ≈ 1.00 and 90% caught at the 97th percentile.
+### AI models (trained on a labelled Kaggle fraud dataset)
+- **Training data:** [Credit Card Transactions Fraud Detection Dataset](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (Sparkov simulation), 1.30M training rows (Jan 2019 – Jun 2020) and 556k test rows (Jun – Dec 2020), about 0.5% fraud. Each card is treated as one business and its merchants as payees; amounts converted USD → PHP at 62.879. Personal columns (name, address, birth date, job, location) are dropped.
+- **Fraud model:** scikit-learn `HistGradientBoostingClassifier` trained on the `is_fraud` labels. Flags "Possible fraud (AI model)" with a fraud-risk percentage and plain-language reasons.
+- **Unusual-pattern model:** scikit-learn `IsolationForest` (no labels). Flags "Unusual pattern (AI model)" for payments more unusual than a chosen percentile of the business's own payments.
+- **Two versions of each:** one using time of day (for uploads with times) and one for date-only uploads; the app picks automatically. Including the time of payment in uploads makes the fraud model noticeably better.
+- **Features (scale-free):** amount vs. the business's usual payment, amount vs. its category, hours since the last payment to the same payee, change from that payee's last amount, payments to that payee in 24 hours, burst of payments vs. a usual day, and time of day. See [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md).
+- **Test results** (on the later, unseen test period; full numbers in `models/model_card.json`):
+
+  | Model | ROC-AUC | PR-AUC | Precision | Recall |
+  |---|---|---|---|---|
+  | Fraud model, with time of day | 0.973 | 0.483 | 0.47 | 0.61 |
+  | Fraud model, date only | 0.948 | 0.333 | 0.29 | 0.51 |
+  | Isolation Forest (with time) | 0.853 | 0.031 | 0.04 | 0.32 (at 97th percentile) |
+  | Baseline rule: top 1% amount per business | — | — | 0.11 | 0.26 |
+
+- **Settings:** `fraud_min_probability` (default: the model's recommended level, chosen for best F1 on a validation split; Low sensitivity 0.5, High 0.15) and `ml_percentile` (Low 99.5, Balanced 99, High 97). Both models need at least 20 payments in a business.
+- **Retrain:** `pip install -r requirements-train.txt` then `python -m treasury_guard.training` (downloads the dataset with kagglehub, ~200 MB, takes a few minutes). The app only loads `models/fraud_models.joblib`; it needs the scikit-learn version in `requirements.txt`, otherwise the AI checks are skipped.
 
 ## Upload format
 
@@ -87,7 +98,7 @@ Errors return `{"error": "message"}` with a 4xx status.
 | `POST /api/uploads` | Form fields `file` and `mapping` (JSON, e.g. `{"date":"Date","amount":"Amount"}`) → import summary + detection results |
 | `GET /api/uploads` | Upload history |
 | `GET /api/uploads/template` | Download the CSV template |
-| `GET /api/model` | The AI model's card: training data, features, evaluation |
+| `GET /api/model` | The AI models' card: training data, features, test results, and whether they loaded |
 | `POST /api/demo/load` | Import the Kaggle sample data into this business |
 | `GET /api/transactions` | Query: `category`, `from`, `to` (YYYY-MM-DD), `direction` (out/in), `flagged=1`, `page`, `per_page` (max 200). Each row includes its highest flag severity |
 | `GET /api/detection/settings` | Current settings, presets, suggested payment limits |
@@ -113,7 +124,8 @@ treasury_guard/
   statistical.py             Increment 3 Z-score and IQR checks
   severity.py                Increment 3 severity scoring
   preprocessing.py           keeps only needed columns, cleans rows, builds model features
-  anomaly_model.py           Isolation Forest: training, model card, scoring and reasons
+  training.py                trains both AI models (run once; needs requirements-train.txt)
+  anomaly_model.py           loads the AI models, scores a business's payments, writes reasons
   settings.py                per-business thresholds and sensitivity presets
   detection.py               runs all checks for a business and saves the flags
   flags.py                   flag storage and review status
@@ -123,10 +135,10 @@ treasury_guard/
 templates/, static/          placeholder pages
 models/                      trained model and model card
 docs/                        CSV format guide and template
-data/                        Kaggle data (sample data and model training)
+data/                        Kaggle sample data for the demo account
 tests/                       unit and API tests
 ```
 
 ## Sample data
 
-[Fraud Detection Dataset](https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset) by goyaladi on Kaggle (three files joined on `TransactionID`). It is synthetic: 1,000 transactions, amounts spread evenly between 10 and 100. Because the amounts are so evenly spread, the Z-score and IQR checks find nothing in it (they are tested with other data in `tests/test_statistical.py`), and the AI model flags about 3% of it, mostly quick repeat payments to the same account. Its `fraud_indicators.csv` labels are used only to evaluate the model.
+The demo account loads the [Fraud Detection Dataset](https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset) by goyaladi (three files joined on `TransactionID`). It is synthetic, with amounts spread evenly between 10 and 100 and random fraud labels, so it is only used to show the app working, not to train or evaluate the models.

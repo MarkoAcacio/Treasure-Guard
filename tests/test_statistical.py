@@ -48,7 +48,7 @@ class SeverityTests(unittest.TestCase):
         self.assertEqual([level_for(s) for s in (90, 75, 60, 50, 49)], ["high", "high", "medium", "medium", "low"])
 
     def test_agreement_bonus_when_several_checks_flag_same_payment(self):
-        found = find_anomalies(normal_month(outlier=500), settings(large_limit=400, small_limit=1, ml_enabled=False))
+        found = find_anomalies(normal_month(outlier=500), settings(large_limit=400, small_limit=1, ml_enabled=False, fraud_model_enabled=False))
         on_outlier = [f for f in found if f["txn_ids"] == [999]]
         # The outlier is alone on its day, so the category-jump check also catches it.
         self.assertEqual(sorted(f["type"] for f in on_outlier), ["iqr", "large", "spike", "zscore"])

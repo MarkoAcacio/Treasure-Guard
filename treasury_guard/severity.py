@@ -34,6 +34,8 @@ def base_score(flag):
         return _clamp(50 + 25 * (abs(d["z_score"]) - d["threshold"]))
     if kind == "iqr":
         return _clamp(45 + 30 * d["distance_in_iqr"])
+    if kind == "fraud":
+        return _clamp(45 + 55 * d["probability"])
     if kind == "ml":
         span = max(100 - d["threshold"], 0.5)
         return _clamp(50 + 40 * (d["percentile"] - d["threshold"]) / span)

@@ -1,45 +1,54 @@
-"""Pre-processing for the anomaly model.
+"""Pre-processing for the AI models.
 
 Two jobs:
-1. Keep only the columns the model needs (from the Kaggle training files or from an
-   owner's uploaded CSV) and clean them into one standard transaction format.
+1. Keep only the columns the models need (from the training dataset or from an owner's
+   uploaded CSV) and clean them into one standard transaction format.
 2. Turn those transactions into numeric features.
 
-The same feature code is used for training (Kaggle data) and for scoring (each
-business's uploads), so the model always sees data prepared the same way.
+The same feature code is used for training and for scoring each business's uploads, so
+the models always see data prepared the same way.
 
-Features are "scale-free": they compare each payment with the same business's other
-payments (in the same category, or to the same account) instead of using raw peso
-amounts. That lets a model trained on the Kaggle data (amounts 10-100) score a business
-whose payments are in the thousands, with very different amounts per category.
+Training data: Kaggle "Credit Card Transactions Fraud Detection Dataset" (kartik2112,
+simulated with Sparkov). Each card is treated like one business: the card's purchases are
+its payments and the merchants are its payees.
+
+Features are "scale-free": they compare each payment with the same business's own
+history (its usual amount, the same category, the same payee) instead of using raw
+amounts, so a model trained on US card data works for a Philippine business of any size.
 """
-import csv
 import math
 from bisect import bisect_left
 from collections import defaultdict
 from datetime import datetime
-from pathlib import Path
 from statistics import median, quantiles
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 # ---------- 1. Columns: what is used and what is dropped ----------
 
-# Kaggle "Fraud Detection Dataset" (goyaladi): only these files/columns are used for training.
-KAGGLE_COLUMNS_USED = {
-    "transaction_records.csv": ["TransactionID", "Amount", "CustomerID"],
-    "transaction_metadata.csv": ["TransactionID", "Timestamp", "MerchantID"],
-    "transaction_category_labels.csv": ["TransactionID", "Category"],
+USD_TO_PHP = 62.879                  # European Central Bank reference rate, 2026-10-14
+USD_TO_PHP_DATE = "2026-10-14"
+
+TRAINING_DATASET = "kartik2112/fraud-detection"
+TRAINING_COLUMNS_USED = {
+    "trans_date_trans_time": "Date and time of the payment",
+    "amt": "Amount (USD, converted to PHP)",
+    "cc_num": "Card number; groups payments into one 'business' (never stored or shown)",
+    "merchant": "Payee",
+    "category": "Category",
+    "is_fraud": "Fraud label; the target for the fraud model and for evaluation only",
 }
-# Used only to evaluate the model afterwards, never as a training input.
-KAGGLE_LABEL_FILE = ("fraud_indicators.csv", "FraudIndicator")
-# Not used, and why.
-KAGGLE_COLUMNS_DROPPED = {
-    "customer_data.csv": "Name, age and address are personal details, not payment behaviour.",
-    "account_activity.csv": "Account balance and last login are not in an MSME's payment records.",
-    "suspicious_activity.csv": "A customer-level label, not a feature of each payment.",
-    "amount_data.csv": "A second, unrelated amount column; transaction_records.Amount is used instead.",
-    "anomaly_scores.csv": "A precomputed score; using it would copy someone else's answer.",
+TRAINING_COLUMNS_DROPPED = {
+    "first, last, gender, dob, job": "Personal details of the cardholder, not payment behaviour.",
+    "street, city, state, zip, lat, long, city_pop": "Home address and location; not in MSME payment records.",
+    "merch_lat, merch_long": "Merchant location; not in MSME payment records.",
+    "trans_num, unix_time, Unnamed: 0": "IDs and a duplicate of the timestamp.",
+}
+
+CATEGORY_NAMES = {
+    "entertainment": "Entertainment", "food_dining": "Food & dining", "gas_transport": "Gas & transport",
+    "grocery_net": "Grocery (online)", "grocery_pos": "Grocery (in store)", "health_fitness": "Health & fitness",
+    "home": "Home", "kids_pets": "Kids & pets", "misc_net": "Miscellaneous (online)",
+    "misc_pos": "Miscellaneous (in store)", "personal_care": "Personal care",
+    "shopping_net": "Shopping (online)", "shopping_pos": "Shopping (in store)", "travel": "Travel",
 }
 
 # Standard transaction format used everywhere after pre-processing.
@@ -47,7 +56,7 @@ STANDARD_FIELDS = ("id", "timestamp", "amount", "counterparty", "merchant", "cat
 
 
 def clean_transactions(rows):
-    """Keep only the needed fields and drop rows the model can't use.
+    """Keep only the needed fields and drop rows the models can't use.
 
     `rows` are dicts with at least: id, timestamp (datetime), amount, counterparty,
     merchant, category. Extra keys are ignored. Returns new dicts sorted by time.
@@ -71,46 +80,46 @@ def clean_transactions(rows):
     return cleaned
 
 
-def _read(name):
-    with open(DATA_DIR / name, newline="", encoding="utf-8") as f:
-        return {row["TransactionID"]: row for row in csv.DictReader(f)}
-
-
-def load_kaggle_training_data():
-    """Read only the used Kaggle columns and return (transactions, fraud_labels)."""
-    records = _read("transaction_records.csv")
-    metadata = _read("transaction_metadata.csv")
-    categories = _read("transaction_category_labels.csv")
-    rows = []
-    for txn_id, rec in records.items():
-        if txn_id not in metadata or txn_id not in categories:
-            continue
-        rows.append({
-            "id": int(txn_id),
-            "timestamp": datetime.strptime(metadata[txn_id]["Timestamp"], "%Y-%m-%d %H:%M:%S"),
-            "amount": float(rec["Amount"]),
-            "counterparty": rec["CustomerID"],
-            "merchant": metadata[txn_id]["MerchantID"],
-            "category": categories[txn_id]["Category"],
-        })
-    labels = {}
-    label_path = DATA_DIR / KAGGLE_LABEL_FILE[0]
-    if label_path.exists():
-        with open(label_path, newline="", encoding="utf-8") as f:
-            labels = {int(r["TransactionID"]): int(r[KAGGLE_LABEL_FILE[1]]) for r in csv.DictReader(f)}
-    return clean_transactions(rows), labels
+def clean_training_row(row_id, when, amount_usd, merchant, category):
+    """One training-dataset row in the standard format (USD -> PHP, readable names)."""
+    merchant = merchant[6:] if merchant.startswith("fraud_") else merchant  # every merchant has this prefix
+    return {
+        "id": row_id,
+        "timestamp": datetime.strptime(when, "%Y-%m-%d %H:%M:%S"),
+        "amount": round(float(amount_usd) * USD_TO_PHP, 2),
+        "counterparty": merchant,
+        "merchant": merchant,
+        "category": CATEGORY_NAMES.get(category, category),
+    }
 
 
 # ---------- 2. Features ----------
 
-FEATURES = (
+BASE_FEATURES = (
+    "amount_vs_usual",           # log(amount / the business's median payment)
     "amount_vs_category",        # robust z-score of log(amount) within its category
-    "hours_since_same_account",  # log(1 + hours since the previous payment to the same account), capped at 3 days
-    "change_from_last_payment",  # |log(amount / previous amount to the same account)|
-    "payments_same_account_24h", # log(1 + payments to the same account in the 24 hours before)
+    "hours_since_same_payee",    # log(1 + hours since the previous payment to the same payee), capped at 3 days
+    "change_from_last_payment",  # |log(amount / previous amount to the same payee)|
+    "payments_same_payee_24h",   # log(1 + payments to the same payee in the 24 hours before)
+    "burst_vs_usual_day",        # log(1 + payments in the last 24h) - log(1 + usual payments per day)
 )
-GAP_CAP_HOURS = 72               # gaps longer than 3 days all count as "no recent payment"
-MIN_CATEGORY_SIZE = 5            # smaller categories are compared with all payments
+TIME_FEATURES = ("hour_sin", "hour_cos")  # time of day, only when the data has times
+GAP_CAP_HOURS = 72
+MIN_CATEGORY_SIZE = 5
+_EPOCH = datetime(1970, 1, 1)
+
+
+def feature_names(use_time):
+    return BASE_FEATURES + (TIME_FEATURES if use_time else ())
+
+
+def has_times(transactions):
+    """True if the data has times of day (not just dates)."""
+    return any(t["timestamp"].hour or t["timestamp"].minute or t["timestamp"].second for t in transactions)
+
+
+def _seconds(dt):
+    return (dt - _EPOCH).total_seconds()
 
 
 def _robust_scale(values):
@@ -121,16 +130,17 @@ def _robust_scale(values):
     return q2, (q3 - q1) or 1.0
 
 
-def build_features(transactions, fill_change=None):
-    """Return (rows_of_feature_values, context) for cleaned transactions (one row per transaction).
+def build_features(transactions, use_time, fill_change):
+    """Features for ONE business's cleaned transactions (sorted by time).
 
-    `fill_change` is the value used for change_from_last_payment when an account has no
-    earlier payment; training stores its median so scoring uses the same value.
+    Returns (rows, context): one feature row and one context dict (for explanations) per
+    transaction. `fill_change` is used for change_from_last_payment when a payee has no
+    earlier payment; it comes from training so scoring matches.
     """
     if not transactions:
-        return [], {}
+        return [], []
     logs = [math.log(t["amount"]) for t in transactions]
-
+    usual = median(logs)
     by_category = defaultdict(list)
     for t, lg in zip(transactions, logs):
         by_category[t["category"]].append(lg)
@@ -138,39 +148,46 @@ def build_features(transactions, fill_change=None):
     category_scale = {c: (_robust_scale(v) if len(v) >= MIN_CATEGORY_SIZE else overall_scale)
                       for c, v in by_category.items()}
 
-    # Payment history per account (counterparty, else merchant), in time order.
-    history = defaultdict(list)  # account -> list of (timestamp, amount)
-    history_times = defaultdict(list)  # account -> list of POSIX times (sorted)
-    raw_changes = []
+    times = [_seconds(t["timestamp"]) for t in transactions]
+    span_days = max((times[-1] - times[0]) / 86400, 1.0)
+    usual_per_day = len(transactions) / span_days
+
+    last_payment = {}                  # payee -> (time, amount)
+    payee_times = defaultdict(list)    # payee -> sorted times
     rows, context = [], []
-    for t, lg in zip(transactions, logs):
-        account = t["counterparty"] or t["merchant"] or "_unknown"
-        past = history[account]
-        if past:
-            prev_time, prev_amount = past[-1]
-            gap = min((t["timestamp"] - prev_time).total_seconds() / 3600, GAP_CAP_HOURS)
+    for i, (t, lg, now) in enumerate(zip(transactions, logs, times)):
+        payee = t["counterparty"] or t["merchant"] or "_unknown"
+        cutoff = now - 86400
+        if payee in last_payment:
+            prev_time, prev_amount = last_payment[payee]
+            gap = min((now - prev_time) / 3600, GAP_CAP_HOURS)
             change = abs(math.log(t["amount"] / prev_amount))
-            raw_changes.append(change)
-            times = history_times[account]
-            cutoff = t["timestamp"].timestamp() - 24 * 3600
-            recent = len(times) - bisect_left(times, cutoff)
+            same_payee_24h = len(payee_times[payee]) - bisect_left(payee_times[payee], cutoff)
         else:
-            gap, change, recent = GAP_CAP_HOURS, None, 0
-        past.append((t["timestamp"], t["amount"]))
-        history_times[account].append(t["timestamp"].timestamp())
+            gap, change, same_payee_24h = GAP_CAP_HOURS, fill_change, 0
+        business_24h = i - bisect_left(times, cutoff, 0, i)
+        last_payment[payee] = (now, t["amount"])
+        payee_times[payee].append(now)
 
         mid, spread = category_scale[t["category"]]
-        rows.append([
+        row = [
+            lg - usual,
             (lg - mid) / spread,
             math.log1p(max(gap, 0.0)),
             change,
-            math.log1p(recent),
-        ])
-        context.append({"account": account, "gap_hours": None if gap == GAP_CAP_HOURS else gap,
-                        "recent_count": recent, "category_typical": math.exp(mid)})
-
-    fill = fill_change if fill_change is not None else (median(raw_changes) if raw_changes else math.log(2))
-    for row in rows:
-        if row[2] is None:
-            row[2] = fill
-    return rows, {"per_row": context, "fill_change": fill}
+            math.log1p(same_payee_24h),
+            math.log1p(business_24h) - math.log1p(usual_per_day),
+        ]
+        if use_time:
+            hour = t["timestamp"].hour + t["timestamp"].minute / 60
+            row += [math.sin(2 * math.pi * hour / 24), math.cos(2 * math.pi * hour / 24)]
+        rows.append(row)
+        context.append({
+            "gap_hours": None if gap == GAP_CAP_HOURS else gap,
+            "same_payee_24h": same_payee_24h,
+            "business_24h": business_24h,
+            "usual_per_day": usual_per_day,
+            "usual_amount": math.exp(usual),
+            "category_typical": math.exp(mid),
+        })
+    return rows, context

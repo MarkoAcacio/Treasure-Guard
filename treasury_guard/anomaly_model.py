@@ -1,263 +1,179 @@
-"""Machine-learning check: an Isolation Forest trained on the Kaggle dataset.
+"""AI checks: scoring a business's payments with the trained models.
 
-Isolation Forest is unsupervised: it learns what typical payments look like and scores
-how easy a payment is to "isolate" from the rest. It needs no fraud labels, which matters
-because MSME uploads have none (and the Kaggle labels turned out to be random; see the
-model card).
+Two models, trained on the Kaggle credit card fraud dataset (see training.py and
+models/model_card.json):
 
-How a business's payments are scored:
-1. Pre-process and build scale-free features (preprocessing.py).
-2. The Kaggle-trained model gives each payment an anomaly score.
-3. Scores are ranked within the business: a payment at the 97th percentile is more unusual
-   than 97% of that business's own payments. The owner's "AI model sensitivity" setting is
-   this percentile, so it controls roughly what share of payments get flagged.
-4. Range check: Isolation Forest can't tell how far beyond its training data a value is
-   (a payment 100x the usual looks like the largest training payment), so a feature far
-   outside the training range is always treated as highly unusual.
+- Fraud model (gradient boosting, learned from labelled fraud): estimates how likely a
+  payment is to be fraud. Flags payments at or above the business's probability setting.
+- Isolation Forest (unsupervised): how unusual a payment is. Scores are ranked within the
+  business, so the "AI sensitivity" percentile controls roughly what share gets flagged.
+  Isolation Forest can't tell how far beyond its training data a value is, so a feature far
+  outside the training range is always treated as highly unusual.
 
-Train:  python -m treasury_guard.anomaly_model
-Files:  models/isolation_forest.joblib and models/model_card.json
-If the saved model is missing or was made with a different scikit-learn version, it is
-retrained automatically from data/ (takes about a second).
+The app only loads the saved models; it never trains. If the model file is missing or was
+made with another scikit-learn version, these checks are skipped and the reason is logged.
 """
 import json
-import math
-import random
+import logging
 from bisect import bisect_left
-from datetime import datetime, timedelta
-from pathlib import Path
-from statistics import median, quantiles
 
 import joblib
 import sklearn
-from sklearn.ensemble import IsolationForest
-from sklearn.metrics import roc_auc_score
 
-from .preprocessing import (FEATURES, KAGGLE_COLUMNS_DROPPED, KAGGLE_COLUMNS_USED, build_features,
-                            clean_transactions, load_kaggle_training_data)
+from .preprocessing import build_features, clean_transactions, has_times
+from .training import BUNDLE_PATH, CARD_PATH, MODEL_VERSION
 
-MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
-MODEL_PATH = MODEL_DIR / "isolation_forest.joblib"
-CARD_PATH = MODEL_DIR / "model_card.json"
-MODEL_VERSION = 3
-PARAMS = {"n_estimators": 200, "max_samples": "auto", "contamination": "auto", "random_state": 42}
-EVAL_PERCENTILE = 97.0
-# A feature more than RANGE_MARGIN IQRs outside the training range counts as at least this unusual.
-RANGE_MARGIN = 1.5
+log = logging.getLogger(__name__)
+
+MIN_PAYMENTS = 20           # a business needs this many payments before the models compare them
+RANGE_MARGIN = 1.5          # IQRs beyond the training range that count as "far outside"
 OUT_OF_RANGE_PERCENTILE = 99.5
-MIN_PAYMENTS = 20  # a business needs this many payments before the model can compare them
+NIGHT_HOURS = {22, 23, 0, 1, 2, 3, 4}
 
-_loaded = None  # (model, card)
+_bundle = None
 
 
-# ---------- Training ----------
+class ModelUnavailable(RuntimeError):
+    pass
+
+
+def load_models():
+    """Load the trained models once. Raises ModelUnavailable with a fix-it message."""
+    global _bundle
+    if _bundle is not None:
+        return _bundle
+    try:
+        bundle = joblib.load(BUNDLE_PATH)  # our own file, written by training.py
+    except (OSError, EOFError, ValueError) as e:
+        raise ModelUnavailable(f"No trained model at {BUNDLE_PATH}. Run: python -m treasury_guard.training") from e
+    if bundle.get("model_version") != MODEL_VERSION or bundle.get("sklearn_version") != sklearn.__version__:
+        raise ModelUnavailable(
+            f"The saved model was made with scikit-learn {bundle.get('sklearn_version')}, but "
+            f"{sklearn.__version__} is installed. Install the version in requirements.txt or retrain.")
+    _bundle = bundle
+    return _bundle
+
+
+def model_card():
+    return json.loads(CARD_PATH.read_text())
+
 
 def _percentile_of(sorted_scores, score):
     return 100.0 * bisect_left(sorted_scores, score) / len(sorted_scores)
 
 
-def _inject_anomalies(transactions, count=60, seed=7):
-    """Copy the data and add clearly unusual payments, to check the model catches them."""
-    rng = random.Random(seed)
-    usual = median(t["amount"] for t in transactions)
-    base = list(transactions)
-    next_id = max(t["id"] for t in base) + 1
-    injected = []
-    for i in range(count):
-        t = rng.choice(transactions)
-        kind = i % 3
-        if kind == 0:    # far larger than usual
-            amount = usual * rng.uniform(6, 15)
-            when = t["timestamp"] + timedelta(minutes=30)
-            account = t["counterparty"]
-        elif kind == 1:  # tiny test-style charge
-            amount = usual * rng.uniform(0.005, 0.03)
-            when = t["timestamp"] + timedelta(minutes=30)
-            account = f"new-{i}"
-        else:            # rapid repeat to the same account with a very different amount
-            amount = t["amount"] * rng.choice([0.1, 8.0])
-            when = t["timestamp"] + timedelta(minutes=rng.randint(5, 90))
-            account = t["counterparty"]
-        injected.append({"id": next_id, "timestamp": when, "amount": amount, "counterparty": account,
-                         "merchant": t["merchant"], "category": t["category"]})
-        next_id += 1
-    return clean_transactions(base + injected), {t["id"] for t in injected}
-
-
-def _percentile_with_range_check(pct, row, feature_stats):
-    for name, value in zip(FEATURES, row):
-        st = feature_stats[name]
+def _far_outside_training(row, model):
+    for name, value in zip(model["features"], row):
+        st = model["feature_stats"][name]
         margin = RANGE_MARGIN * st["iqr"]
         if value < st["min"] - margin or value > st["max"] + margin:
-            return max(pct, OUT_OF_RANGE_PERCENTILE)
-    return pct
+            return True
+    return False
 
-
-def train_model(save=True):
-    transactions, labels = load_kaggle_training_data()
-    X, ctx = build_features(transactions)
-    model = IsolationForest(**PARAMS).fit(X)
-    train_scores = sorted(float(s) for s in -model.score_samples(X))
-
-    feature_stats = {}
-    for i, name in enumerate(FEATURES):
-        column = [row[i] for row in X]
-        q1, q2, q3 = quantiles(column, n=4, method="inclusive")
-        feature_stats[name] = {"median": q2, "iqr": (q3 - q1) or 1.0, "min": min(column), "max": max(column)}
-
-    # Evaluation 1: the dataset's own fraud labels.
-    scores = [float(s) for s in -model.score_samples(X)]
-    y = [labels.get(t["id"]) for t in transactions]
-    label_eval = None
-    if labels and len(set(y)) == 2:
-        cutoff = train_scores[int(len(train_scores) * EVAL_PERCENTILE / 100)]
-        flagged = [lab for lab, s in zip(y, scores) if s >= cutoff]
-        label_eval = {
-            "roc_auc": round(roc_auc_score(y, scores), 3),
-            "fraud_rate_overall": round(sum(y) / len(y), 3),
-            "fraud_rate_in_flagged": round(sum(flagged) / len(flagged), 3) if flagged else None,
-            "note": ("The Kaggle fraud labels were generated at random, independent of every column, "
-                     "so no model can predict them (a supervised Random Forest also scored about 0.43). "
-                     "An AUC near 0.5 is expected here and is not a sign the model is broken."),
-        }
-
-    # Evaluation 2: injected unusual payments.
-    mixed, injected_ids = _inject_anomalies(transactions)
-    Xm, _ = build_features(mixed, fill_change=ctx["fill_change"])
-    mixed_raw = [float(s) for s in -model.score_samples(Xm)]
-    mixed_sorted = sorted(mixed_raw)
-    mixed_pct = [_percentile_with_range_check(_percentile_of(mixed_sorted, s), row, feature_stats)
-                 for s, row in zip(mixed_raw, Xm)]
-    is_injected = [1 if t["id"] in injected_ids else 0 for t in mixed]
-    caught = sum(1 for flag, p in zip(is_injected, mixed_pct) if flag and p >= EVAL_PERCENTILE)
-    injected_eval = {
-        "injected": len(injected_ids),
-        "caught_at_97th_percentile": caught,
-        "recall": round(caught / len(injected_ids), 3),
-        "roc_auc": round(roc_auc_score(is_injected, mixed_pct), 3),
-        "kinds": ["6-15x the usual amount", "0.5-3% of the usual amount (test charge)",
-                  "same account paid again within 90 minutes with a very different amount"],
-    }
-
-    card = {
-        "model": "IsolationForest",
-        "model_version": MODEL_VERSION,
-        "sklearn_version": sklearn.__version__,
-        "trained_at": datetime.now().isoformat(timespec="seconds"),
-        "parameters": PARAMS,
-        "training_data": {
-            "source": "https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset",
-            "rows": len(transactions),
-            "columns_used": KAGGLE_COLUMNS_USED,
-            "files_dropped": KAGGLE_COLUMNS_DROPPED,
-        },
-        "features": list(FEATURES),
-        "feature_stats": feature_stats,
-        "fill_change": ctx["fill_change"],
-        "train_scores_sorted": train_scores,
-        "evaluation": {"fraud_labels": label_eval, "injected_anomalies": injected_eval},
-    }
-    if save:
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"model": model, "model_version": MODEL_VERSION}, MODEL_PATH)
-        CARD_PATH.write_text(json.dumps(card, indent=2))
-    return model, card
-
-
-def load_model():
-    """Load the saved model, retraining it if it's missing or out of date."""
-    global _loaded
-    if _loaded:
-        return _loaded
-    try:
-        card = json.loads(CARD_PATH.read_text())
-        saved = joblib.load(MODEL_PATH)  # our own file, written by train_model()
-        if (card.get("sklearn_version") != sklearn.__version__ or card.get("features") != list(FEATURES)
-                or saved.get("model_version") != MODEL_VERSION):
-            raise ValueError("model out of date")
-        _loaded = (saved["model"], card)
-    except (OSError, ValueError, KeyError, EOFError, json.JSONDecodeError):
-        try:
-            _loaded = train_model(save=True)
-        except OSError:  # folder not writable: keep it in memory only
-            _loaded = train_model(save=False)
-    return _loaded
-
-
-# ---------- Scoring a business's payments ----------
 
 def score_transactions(transactions):
-    """Return [(transaction, percentile, feature_row, context)] for cleaned transactions."""
-    model, card = load_model()
-    X, ctx = build_features(transactions, fill_change=card["fill_change"])
-    if not X:
-        return []
-    scores = [float(s) for s in -model.score_samples(X)]
-    ranked = sorted(scores)  # percentile within this business's own payments
-    stats = card["feature_stats"]
-    return [(t, _percentile_with_range_check(_percentile_of(ranked, s), row, stats), row, c)
-            for t, s, row, c in zip(transactions, scores, X, ctx["per_row"])]
+    """Return (variant_name, model, [(txn, fraud_probability, unusual_percentile, row, context)])."""
+    bundle = load_models()
+    txns = clean_transactions(transactions)
+    variant = "with_time" if has_times(txns) else "date_only"
+    model = bundle["variants"][variant]
+    rows, context = build_features(txns, use_time=variant == "with_time", fill_change=model["fill_change"])
+    if not rows:
+        return variant, model, []
+    probabilities = model["classifier"].predict_proba(rows)[:, 1]
+    unusual = [float(s) for s in -model["iforest"].score_samples(rows)]
+    ranked = sorted(unusual)
+    results = []
+    for t, p, s, row, c in zip(txns, probabilities, unusual, rows, context):
+        pct = _percentile_of(ranked, s)
+        if _far_outside_training(row, model):
+            pct = max(pct, OUT_OF_RANGE_PERCENTILE)
+        results.append((t, float(p), pct, row, c))
+    return variant, model, results
 
 
-def _explain(t, row, c, card, fmt):
-    """Plain-language reasons: the features that are furthest from what the model learned."""
-    stats = card["feature_stats"]
-    candidates = []
-    for name, value in zip(FEATURES, row):
-        st = stats[name]
-        candidates.append((abs(value - st["median"]) / st["iqr"], name, value, value > st["median"]))
-    candidates.sort(reverse=True)
+def explain(t, row, c, model, fmt):
+    """Plain-language reasons: the features furthest from typical training payments."""
+    stats = model["feature_stats"]
+    ranked = sorted(
+        ((abs(v - stats[n]["median"]) / stats[n]["iqr"], n, v, v > stats[n]["median"])
+         for n, v in zip(model["features"], row)),
+        reverse=True,
+    )
     phrases = []
-    for distance, name, value, above in candidates:
-        if distance < 1.5 or len(phrases) == 2:
+    hour = t["timestamp"].hour
+    if "hour_sin" in model["features"] and hour in NIGHT_HOURS:
+        phrases.append(f"it was made at {t['timestamp'].strftime('%I:%M %p').lstrip('0')}, late at night")
+    amount_said = False
+    for distance, name, value, above in ranked:
+        if distance < 1.5 or len(phrases) >= 3:
             break
-        if name == "amount_vs_category":
+        if name in ("amount_vs_usual", "amount_vs_category"):
+            if amount_said:
+                continue  # one sentence about the amount is enough
+            amount_said = True
+        if name == "amount_vs_usual" and above:
+            phrases.append(f"the amount is {t['amount'] / c['usual_amount']:.1f}x your usual payment "
+                           f"of {fmt(c['usual_amount'])}")
+        elif name == "amount_vs_category":
             ratio = t["amount"] / c["category_typical"]
-            phrases.append(
-                f"the amount is {ratio:.1f}x your typical {t['category']} payment of {fmt(c['category_typical'])}"
-                if above else
-                f"the amount is only {ratio * 100:.0f}% of your typical {t['category']} payment of "
-                f"{fmt(c['category_typical'])}")
-        elif name == "hours_since_same_account" and not above and c["gap_hours"] is not None:
-            phrases.append(f"the same account was paid only {c['gap_hours']:.1f} hours before")
+            phrases.append(f"it is {ratio:.1f}x your typical {t['category']} payment of {fmt(c['category_typical'])}"
+                           if above else
+                           f"it is only {ratio * 100:.0f}% of your typical {t['category']} payment")
+        elif name == "hours_since_same_payee" and not above and c["gap_hours"] is not None:
+            phrases.append(f"the same payee was paid only {c['gap_hours']:.1f} hours before")
         elif name == "change_from_last_payment" and above:
-            phrases.append("it is very different from the last payment to this account")
-        elif name == "payments_same_account_24h" and above:
-            phrases.append(f"it is payment number {c['recent_count'] + 1} to this account within 24 hours")
+            phrases.append("it is very different from the last payment to this payee")
+        elif name == "payments_same_payee_24h" and above:
+            phrases.append(f"it is payment number {c['same_payee_24h'] + 1} to this payee within 24 hours")
+        elif name == "burst_vs_usual_day" and above:
+            phrases.append(f"it is one of {c['business_24h'] + 1} payments in 24 hours "
+                           f"(you usually make about {c['usual_per_day']:.0f} a day)")
     if not phrases:
-        phrases.append("its mix of amount, account history and timing is rare")
-    return " and ".join(phrases)
+        phrases.append("its mix of amount, payee history and timing is rare")
+    return " and ".join(dict.fromkeys(phrases))  # keep order, drop repeats
 
 
-def find_unusual_patterns(transactions, settings, fmt):
-    """Flags for payments the model rates above the business's chosen percentile."""
-    if not settings.get("ml_enabled", True) or len(transactions) < MIN_PAYMENTS:
+def _flag(key, kind, t, reason, details):
+    return {
+        "key": key, "type": kind, "method": "machine_learning", "txn_ids": [t["id"]],
+        "occurred_at": t["timestamp"].strftime("%Y-%m-%d %H:%M"), "amount": t["amount"],
+        "counterparty": t["counterparty"], "merchant": t["merchant"], "category": t["category"],
+        "reason": reason, "details": details,
+    }
+
+
+def run_ai_checks(transactions, settings, fmt):
+    """Flags from both models. Skipped (empty) if disabled, too few payments, or no model."""
+    wants_fraud = settings.get("fraud_model_enabled", True)
+    wants_unusual = settings.get("ml_enabled", True)
+    if not (wants_fraud or wants_unusual) or len(transactions) < MIN_PAYMENTS:
         return []
-    _, card = load_model()
-    threshold = settings["ml_percentile"]
+    try:
+        variant, model, results = score_transactions(transactions)
+    except ModelUnavailable as e:
+        log.warning("AI checks skipped: %s", e)
+        return []
+
+    min_probability = settings.get("fraud_min_probability") or model["threshold"]
     flags = []
-    for t, pct, row, c in score_transactions(clean_transactions(transactions)):
-        if pct < threshold:
-            continue
-        flags.append({
-            "key": f"ml-{t['id']}",
-            "type": "ml",
-            "method": "machine_learning",
-            "txn_ids": [t["id"]],
-            "occurred_at": t["timestamp"].strftime("%Y-%m-%d %H:%M"),
-            "amount": t["amount"],
-            "counterparty": t["counterparty"],
-            "merchant": t["merchant"],
-            "category": t["category"],
-            "reason": (f"The AI model rates this payment as more unusual than {int(min(pct, 99))}% of your "
-                       f"payments, because {_explain(t, row, c, card, fmt)}."),
-            "details": {"percentile": round(pct, 2), "threshold": threshold,
-                        "features": {n: round(v, 3) for n, v in zip(FEATURES, row)}},
-        })
+    for t, prob, pct, row, c in results:
+        why = None
+        if wants_fraud and prob >= min_probability:
+            why = explain(t, row, c, model, fmt)
+            flags.append(_flag(
+                f"fraud-{t['id']}", "fraud", t,
+                f"The fraud model gives this payment a {prob * 100:.0f}% fraud risk, because {why}.",
+                {"probability": round(prob, 4), "threshold": round(min_probability, 4), "model_variant": variant,
+                 "features": {n: round(v, 3) for n, v in zip(model["features"], row)}},
+            ))
+        if wants_unusual and pct >= settings["ml_percentile"]:
+            why = why or explain(t, row, c, model, fmt)
+            flags.append(_flag(
+                f"ml-{t['id']}", "ml", t,
+                (f"The AI model rates this payment as more unusual than {int(min(pct, 99))}% of your payments, "
+                 f"because {why}."),
+                {"percentile": round(pct, 2), "threshold": settings["ml_percentile"], "model_variant": variant,
+                 "features": {n: round(v, 3) for n, v in zip(model["features"], row)}},
+            ))
     return flags
-
-
-if __name__ == "__main__":
-    _, trained = train_model(save=True)
-    print(f"Trained on {trained['training_data']['rows']} Kaggle transactions -> {MODEL_PATH}")
-    print(json.dumps(trained["evaluation"], indent=2))

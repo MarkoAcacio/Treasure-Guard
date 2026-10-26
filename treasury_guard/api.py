@@ -187,8 +187,16 @@ def upload_template():
 @api.get("/model")
 def model_info():
     """What the AI model is, what it was trained on, and how well it did."""
-    _, card = anomaly_model.load_model()
-    return jsonify({k: v for k, v in card.items() if k != "train_scores_sorted"})
+    try:
+        card = anomaly_model.model_card()
+    except OSError:
+        return error("No trained model yet. Run: python -m treasury_guard.training", 404)
+    try:
+        anomaly_model.load_models()
+        card["status"] = "ready"
+    except anomaly_model.ModelUnavailable as e:
+        card["status"] = f"unavailable: {e}"
+    return jsonify(card)
 
 
 @api.get("/uploads")

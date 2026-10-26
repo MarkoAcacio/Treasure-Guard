@@ -1,0 +1,3 @@
+-r requirements.txt
+kagglehub>=0.3
+pandas>=2.2

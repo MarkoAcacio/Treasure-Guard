@@ -8,6 +8,7 @@ FLAG_TYPE_NAMES = {
     "zscore": "Far from the usual amount",
     "iqr": "Outside the normal range",
     "ml": "Unusual pattern (AI model)",
+    "fraud": "Possible fraud (AI model)",
 }
 
 FLAG_TYPE_DESCRIPTIONS = {
@@ -17,8 +18,10 @@ FLAG_TYPE_DESCRIPTIONS = {
     "spike": "A day's spending in one category is much higher than that category's daily average for the month.",
     "zscore": "The amount is much higher or lower than your usual payments in this category (Z-score method).",
     "iqr": "The amount falls outside the normal range of your payments in this category (IQR method).",
-    "ml": ("A machine-learning model (Isolation Forest) trained on sample transaction data finds this payment's "
-           "combination of amount, account history and timing unusual compared with your other payments."),
+    "ml": ("An Isolation Forest model finds this payment's combination of amount, payee history and timing "
+           "unusual compared with your other payments."),
+    "fraud": ("A fraud model trained on over a million labelled card transactions estimates a high chance that "
+              "this payment is fraud, based on its amount, timing and payee history."),
 }
 
 METHOD_NAMES = {"rule": "Rule check", "statistical": "Statistical check", "machine_learning": "AI model"}

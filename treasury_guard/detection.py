@@ -1,6 +1,6 @@
 """Runs every check for one business and stores the results."""
 from . import flags as flag_store
-from .anomaly_model import find_unusual_patterns
+from .anomaly_model import run_ai_checks
 from .labels import money_formatter
 from .rules import run_rule_checks
 from .settings import fill_limits_from_data
@@ -10,11 +10,11 @@ from .transactions import load_outflows_for_detection
 
 
 def find_anomalies(transactions, settings, currency="PHP"):
-    """Pure function: run rule and statistical checks, then score severity. No database access."""
+    """Pure function: run rule, statistical and AI checks, then score severity. No database access."""
     fmt = money_formatter(currency)
     found = (run_rule_checks(transactions, settings, fmt)
              + run_statistical_checks(transactions, settings, fmt)
-             + find_unusual_patterns(transactions, settings, fmt))
+             + run_ai_checks(transactions, settings, fmt))
     return score_flags(found)
 
 

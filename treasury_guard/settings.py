@@ -21,19 +21,21 @@ DEFAULT_SETTINGS = {
     "zscore_threshold": 3.0,       # flag when an amount is this many standard deviations from average
     "iqr_multiplier": 1.5,         # fence = Q1 - k*IQR .. Q3 + k*IQR
     "min_category_samples": 10,    # smaller categories are compared with all payments instead
-    # Machine-learning check (Isolation Forest trained on the Kaggle data)
+    # AI checks (models trained on the Kaggle credit card fraud dataset; see anomaly_model.py)
+    "fraud_model_enabled": True,
+    "fraud_min_probability": None, # flag at or above this fraud risk; None = the model's recommended level
     "ml_enabled": True,
-    "ml_percentile": 97.0,         # flag payments more unusual than this % of the business's own payments
+    "ml_percentile": 99.0,         # flag payments more unusual than this % of the business's own payments
     "sensitivity": "medium",       # low | medium | high | custom
 }
 
 SENSITIVITY_PRESETS = {
     "low":    {"zscore_threshold": 3.5, "iqr_multiplier": 3.0, "spike_multiplier": 2.5, "dup_tolerance_pct": 2.0,
-               "ml_percentile": 99.0},
+               "ml_percentile": 99.5, "fraud_min_probability": 0.5},
     "medium": {"zscore_threshold": 3.0, "iqr_multiplier": 1.5, "spike_multiplier": 2.0, "dup_tolerance_pct": 5.0,
-               "ml_percentile": 97.0},
+               "ml_percentile": 99.0, "fraud_min_probability": None},
     "high":   {"zscore_threshold": 2.5, "iqr_multiplier": 1.0, "spike_multiplier": 1.5, "dup_tolerance_pct": 8.0,
-               "ml_percentile": 95.0},
+               "ml_percentile": 97.0, "fraud_min_probability": 0.15},
 }
 PRESET_KEYS = set(SENSITIVITY_PRESETS["medium"])
 
@@ -47,7 +49,8 @@ LIMITS = {
     "zscore_threshold": (1, 10),
     "iqr_multiplier": (0.5, 10),
     "min_category_samples": (3, 1000),
-    "ml_percentile": (80, 99.5),
+    "ml_percentile": (80, 99.9),
+    "fraud_min_probability": (0.01, 0.99),
 }
 FRIENDLY = {
     "dup_window_hours": "Double-charge time window (hours)",
@@ -58,7 +61,8 @@ FRIENDLY = {
     "zscore_threshold": "Z-score threshold",
     "iqr_multiplier": "IQR range multiplier",
     "min_category_samples": "Minimum payments per category",
-    "ml_percentile": "AI model sensitivity (percentile)",
+    "ml_percentile": "Unusual-pattern sensitivity (percentile)",
+    "fraud_min_probability": "Minimum fraud risk to flag (0-1)",
 }
 
 
@@ -99,12 +103,16 @@ def apply_changes(current, changes):
         if level in SENSITIVITY_PRESETS:
             new.update(SENSITIVITY_PRESETS[level])
 
-    for switch in ("statistical_enabled", "ml_enabled"):
+    for switch in ("statistical_enabled", "ml_enabled", "fraud_model_enabled"):
         if switch in changes:
             new[switch] = bool(changes.pop(switch))
     changes.pop("limits_source", None)  # set by the system, not the owner
 
     for key, value in changes.items():
+        if key == "fraud_min_probability" and value is None:  # back to the model's recommended level
+            if new[key] is not None:
+                new[key], new["sensitivity"] = None, "custom"
+            continue
         low, high = LIMITS[key]
         try:
             number = float(value)

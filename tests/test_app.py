@@ -117,8 +117,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(template.status_code, 200)
         self.assertTrue(template.get_data(as_text=True).startswith("Date,Amount,Type"))
         model = self.client.get("/api/model").get_json()
-        self.assertEqual(model["model"], "IsolationForest")
-        self.assertNotIn("train_scores_sorted", model)
+        self.assertEqual(model["status"], "ready")
+        self.assertIn("fraud_classifier", model["models"])
 
     def test_existing_pages_still_work(self):
         self.assertEqual(self.client.get("/").status_code, 302)  # sends to login
