@@ -39,6 +39,17 @@ Flags are stored per business with a plain-language reason and a review status (
   Changing any of these by hand switches to "custom". Large/small payment limits are set from the business's own data (top and bottom 1% of payments) until the owner sets them.
 - **Severity score (0–100)** for every flag: a base score from how far past its threshold it is, plus 10 for each other check that flagged the same payment. 75+ is High, 50–74 Medium, below 50 Low.
 
+### AI model (Isolation Forest, trained on the Kaggle dataset)
+- **Model:** scikit-learn `IsolationForest` (200 trees), trained on the Kaggle data with `python -m treasury_guard.anomaly_model`. Saved to `models/isolation_forest.joblib`, with `models/model_card.json` describing the training data, features and evaluation. If the file is missing or made with another scikit-learn version, it retrains itself (about a second).
+- **Why unsupervised:** the Kaggle fraud labels are random (a supervised Random Forest scored ROC-AUC 0.43, worse than guessing), and owners' uploads have no labels. Isolation Forest learns what normal payments look like instead.
+- **Pre-processing:** only the needed columns are used (see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md)); each payment becomes four features compared with the business's own history, so the model works for any currency or business size.
+- **Flags:** "Unusual pattern (AI model)" for payments more unusual than the business's chosen percentile of its own payments (Low 99th, Balanced 97th, High 95th), with a plain-language reason. Needs at least 20 payments.
+- **Evaluation (in the model card):** on the Kaggle fraud labels, ROC-AUC ≈ 0.50 (expected, since the labels are random); on 60 injected unusual payments (very large, tiny test charges, quick repeats with a different amount), ROC-AUC ≈ 1.00 and 90% caught at the 97th percentile.
+
+## Upload format
+
+See [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md) for the columns, accepted values and pre-processing, and [docs/transactions_template.csv](docs/transactions_template.csv) for a template.
+
 ## Run it
 
 ```bash
@@ -75,6 +86,8 @@ Errors return `{"error": "message"}` with a 4xx status.
 | `POST /api/uploads/preview` | Form field `file` (CSV) → columns, sample rows, `suggested_mapping`, field descriptions |
 | `POST /api/uploads` | Form fields `file` and `mapping` (JSON, e.g. `{"date":"Date","amount":"Amount"}`) → import summary + detection results |
 | `GET /api/uploads` | Upload history |
+| `GET /api/uploads/template` | Download the CSV template |
+| `GET /api/model` | The AI model's card: training data, features, evaluation |
 | `POST /api/demo/load` | Import the Kaggle sample data into this business |
 | `GET /api/transactions` | Query: `category`, `from`, `to` (YYYY-MM-DD), `direction` (out/in), `flagged=1`, `page`, `per_page` (max 200). Each row includes its highest flag severity |
 | `GET /api/detection/settings` | Current settings, presets, suggested payment limits |
@@ -99,6 +112,8 @@ treasury_guard/
   rules.py                   Increment 2 rule checks
   statistical.py             Increment 3 Z-score and IQR checks
   severity.py                Increment 3 severity scoring
+  preprocessing.py           keeps only needed columns, cleans rows, builds model features
+  anomaly_model.py           Isolation Forest: training, model card, scoring and reasons
   settings.py                per-business thresholds and sensitivity presets
   detection.py               runs all checks for a business and saves the flags
   flags.py                   flag storage and review status
@@ -106,10 +121,12 @@ treasury_guard/
   demo_data.py               loads the Kaggle sample data
   api.py                     JSON API
 templates/, static/          placeholder pages
-data/                        Kaggle sample data
+models/                      trained model and model card
+docs/                        CSV format guide and template
+data/                        Kaggle data (sample data and model training)
 tests/                       unit and API tests
 ```
 
 ## Sample data
 
-[Fraud Detection Dataset](https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset) by goyaladi on Kaggle (three files joined on `TransactionID`). It is synthetic: 1,000 transactions, amounts spread evenly between 10 and 100. Because the amounts are so evenly spread, the Z-score and IQR checks find nothing in it; they are tested with other data in `tests/test_statistical.py`.
+[Fraud Detection Dataset](https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset) by goyaladi on Kaggle (three files joined on `TransactionID`). It is synthetic: 1,000 transactions, amounts spread evenly between 10 and 100. Because the amounts are so evenly spread, the Z-score and IQR checks find nothing in it (they are tested with other data in `tests/test_statistical.py`), and the AI model flags about 3% of it, mostly quick repeat payments to the same account. Its `fraud_indicators.csv` labels are used only to evaluate the model.

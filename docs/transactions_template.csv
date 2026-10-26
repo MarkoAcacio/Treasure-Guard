@@ -1,0 +1,6 @@
+Date,Amount,Type,Payee,Merchant,Category,Reference,Description
+2026-10-01 08:15,2500.00,Payment,Electric Co. Account 1234,Electric Co.,Utilities,OR-10001,October electricity
+2026-10-01 09:40,18450.00,Payment,Supplier: JB Rice Trading,JB Rice Trading,Inventory & supplies,INV-2231,3 sacks of rice
+2026-10-02 18:05,350.00,Payment,Juan Dela Cruz,,Transport,OR-10002,Tricycle delivery
+2026-10-03 12:00,15000.00,Payment,Landlord - Ms. Santos,,Rent,OR-10003,October stall rent
+2026-10-03 20:30,9800.00,Income,,,Sales,SALES-1003,Daily sales

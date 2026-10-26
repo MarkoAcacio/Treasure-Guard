@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS detection_settings (
 CREATE TABLE IF NOT EXISTS flags (
     business_id   INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
     flag_key      TEXT NOT NULL,            -- stable ID, e.g. 'dup-587-590'
-    type          TEXT NOT NULL,            -- duplicate | large | small | spike | zscore | iqr
-    method        TEXT NOT NULL,            -- rule | statistical
+    type          TEXT NOT NULL,            -- duplicate | large | small | spike | zscore | iqr | ml
+    method        TEXT NOT NULL,            -- rule | statistical | machine_learning
     txn_ids       TEXT NOT NULL,            -- JSON list of transactions.id
     occurred_at   TEXT NOT NULL,
     amount        REAL NOT NULL,

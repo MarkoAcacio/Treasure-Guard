@@ -37,9 +37,9 @@ SYNONYMS = {
     "reference": ["reference", "ref", "transactionid", "txnid", "id", "receiptno", "orno", "invoiceno"],
     "counterparty": ["counterparty", "payee", "customerid", "customer", "account", "accountid", "vendor", "paidto"],
     "merchant": ["merchant", "merchantid", "merchantname", "store", "supplier", "shop"],
-    "category": ["category", "type", "expensetype", "expensecategory", "classification"],
+    "category": ["category", "expensetype", "expensecategory", "classification"],
     "description": ["description", "details", "memo", "note", "notes", "particulars"],
-    "direction": ["direction", "transactiontype", "debitcredit", "drcr", "inout"],
+    "direction": ["type", "direction", "transactiontype", "debitcredit", "drcr", "inout"],
 }
 
 DATE_FORMATS = (
@@ -104,11 +104,14 @@ def suggest_mapping(columns):
 
 def preview_csv(file_bytes, sample_size=5):
     header, body = _read_rows(file_bytes)
+    suggested = suggest_mapping(header)
     return {
         "columns": header,
         "row_count": len(body),
         "sample_rows": [dict(zip(header, r)) for r in body[:sample_size]],
-        "suggested_mapping": suggest_mapping(header),
+        "suggested_mapping": suggested,
+        # Pre-processing keeps only mapped columns; everything else is ignored and never stored.
+        "ignored_columns": [c for c in header if c not in suggested.values()],
         "fields": {f: {"required": req, "description": desc} for f, (req, desc) in FIELDS.items()},
     }
 

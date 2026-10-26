@@ -112,6 +112,14 @@ class AppTests(unittest.TestCase):
         self.assertEqual(summary["transactions"], 1000)
         self.assertIn("high", summary["flags_by_severity"])
 
+    def test_template_and_model_info(self):
+        template = self.client.get("/api/uploads/template")
+        self.assertEqual(template.status_code, 200)
+        self.assertTrue(template.get_data(as_text=True).startswith("Date,Amount,Type"))
+        model = self.client.get("/api/model").get_json()
+        self.assertEqual(model["model"], "IsolationForest")
+        self.assertNotIn("train_scores_sorted", model)
+
     def test_existing_pages_still_work(self):
         self.assertEqual(self.client.get("/").status_code, 302)  # sends to login
         signup = self.client.post("/signup", data={

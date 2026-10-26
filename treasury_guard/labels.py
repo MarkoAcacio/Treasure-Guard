@@ -7,6 +7,7 @@ FLAG_TYPE_NAMES = {
     "spike": "Category spending jump",
     "zscore": "Far from the usual amount",
     "iqr": "Outside the normal range",
+    "ml": "Unusual pattern (AI model)",
 }
 
 FLAG_TYPE_DESCRIPTIONS = {
@@ -16,9 +17,11 @@ FLAG_TYPE_DESCRIPTIONS = {
     "spike": "A day's spending in one category is much higher than that category's daily average for the month.",
     "zscore": "The amount is much higher or lower than your usual payments in this category (Z-score method).",
     "iqr": "The amount falls outside the normal range of your payments in this category (IQR method).",
+    "ml": ("A machine-learning model (Isolation Forest) trained on sample transaction data finds this payment's "
+           "combination of amount, account history and timing unusual compared with your other payments."),
 }
 
-METHOD_NAMES = {"rule": "Rule check", "statistical": "Statistical check"}
+METHOD_NAMES = {"rule": "Rule check", "statistical": "Statistical check", "machine_learning": "AI model"}
 
 STATUS_NAMES = {"new": "Needs review", "confirmed": "Confirmed issue", "dismissed": "Marked OK"}
 
@@ -33,7 +36,7 @@ SENSITIVITY_NAMES = {
 
 # Navigation placeholders for features planned in later increments.
 LATER_MODULES = {
-    "hybrid": "Smart anomaly score (Isolation Forest)",
+    "hybrid": "Combined risk score",
     "alerts": "Alerts",
     "reports": "Reports",
     "audit": "Activity log",

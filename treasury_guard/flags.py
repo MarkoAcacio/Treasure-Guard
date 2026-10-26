@@ -91,7 +91,8 @@ def set_status(conn, business_id, flag_key, status):
 
 
 def count_by(conn, business_id, column):
-    assert column in ("type", "severity", "status", "method")
+    if column not in ("type", "severity", "status", "method"):
+        raise ValueError(f"Can't count flags by {column}.")
     return {r[0]: r[1] for r in conn.execute(
         f"SELECT {column}, COUNT(*) FROM flags WHERE business_id = ? GROUP BY {column}", (business_id,)
     )}

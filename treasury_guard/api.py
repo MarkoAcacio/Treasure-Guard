@@ -8,9 +8,12 @@ Errors come back as {"error": "message"} with a 4xx status.
 import json
 from functools import wraps
 
-from flask import Blueprint, g, jsonify, request, session
+from pathlib import Path
 
-from . import accounts, csv_import, demo_data, detection, flags, labels, settings, severity, transactions
+from flask import Blueprint, g, jsonify, request, send_file, session
+
+from . import (accounts, anomaly_model, csv_import, demo_data, detection, flags, labels, settings, severity,
+               transactions)
 from .accounts import AccountError
 from .csv_import import CsvImportError
 from .settings import SettingsError
@@ -172,6 +175,20 @@ def upload():
         return error(str(e))
     summary["detection"] = detection_summary(detection.run_detection(g.db, g.business["id"]))
     return jsonify(summary), 201
+
+
+@api.get("/uploads/template")
+def upload_template():
+    """A ready-to-fill CSV with the recommended column names."""
+    path = Path(__file__).resolve().parent.parent / "docs" / "transactions_template.csv"
+    return send_file(path, mimetype="text/csv", as_attachment=True, download_name="treasury_guard_template.csv")
+
+
+@api.get("/model")
+def model_info():
+    """What the AI model is, what it was trained on, and how well it did."""
+    _, card = anomaly_model.load_model()
+    return jsonify({k: v for k, v in card.items() if k != "train_scores_sorted"})
 
 
 @api.get("/uploads")
