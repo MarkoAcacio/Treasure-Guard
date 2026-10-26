@@ -1,21 +1,43 @@
 # Treasury Guard
 
-Transaction anomaly detection for MSMEs.
+Transaction anomaly detection for Philippine MSMEs.
 
-## Increment 2 — Rule-based anomaly detection (Sprint 2)
+## What's built
 
-The system now flags suspicious transactions using rules:
+### Increment 1 — Core system and data ingestion
+- Owner sign-up and login (passwords are hashed), one business profile per owner (name, type, currency, address)
+- Spending categories per business (defaults on sign-up, plus any new categories found in uploads)
+- CSV upload in two steps: **preview** (columns, sample rows, suggested column mapping) then **import** with the owner's mapping
+- Validation: required date and amount, many date formats, amounts like `₱1,200.00`, `PHP 99`, `(350.50)`; bad rows are reported by line number; the whole file is rejected if more than half the rows are bad (usually a wrong mapping); rows whose reference number was already imported are skipped
+- Transaction list with filters and paging
 
-| Rule | Default setting |
+### Increment 2 — Rule-based detection
+| Check (name shown to owners) | How it works |
 |---|---|
-| Duplicate charge | Same customer, amounts within 5% of each other, at most 72 hours apart |
-| Large outflow | Amount at or above 97.00 |
-| Small outflow | Amount at or below 12.00 |
-| Category spending spike | A day's spend in a category is at least 2× that category's average daily spend for the month |
+| Possible double charge | Same account (or merchant), amounts within X%, at most N hours apart |
+| Unusually large payment | Amount at or above the large-payment limit |
+| Unusually small payment | Amount at or below the small-payment limit |
+| Category spending jump | A day's spend in a category ≥ N× that category's average daily spend for the month |
 
-Every flag is saved in a SQLite database (`instance/treasury_guard.db`) with its rule, the transactions involved, a plain-language reason and a review status (needs review, confirmed, dismissed). Re-running detection keeps the review status of flags that still trigger and removes flags that no longer do.
+Flags are stored per business with a plain-language reason and a review status (Needs review, Confirmed issue, Marked OK). Re-running keeps the status of flags that still trigger.
 
-Statistical detection, the hybrid ML score, alerts, reports, audit trail and users & roles are placeholders for later increments.
+### Increment 3 — Statistical detection, thresholds and severity
+| Check | How it works |
+|---|---|
+| Far from the usual amount (Z-score) | Flags a payment whose amount is ≥ threshold standard deviations from the average for its category |
+| Outside the normal range (IQR) | Flags a payment beyond Q1 − k·IQR or Q3 + k·IQR for its category |
+
+- Categories with fewer than `min_category_samples` payments are compared with all of the business's payments.
+- **Per-business settings** with **sensitivity presets**:
+
+  | Sensitivity | Z-score | IQR k | Category jump | Double-charge tolerance |
+  |---|---|---|---|---|
+  | Low | 3.5 | 3.0 | 2.5× | 2% |
+  | Medium (default) | 3.0 | 1.5 | 2.0× | 5% |
+  | High | 2.5 | 1.0 | 1.5× | 8% |
+
+  Changing any of these by hand switches to "custom". Large/small payment limits are set from the business's own data (top and bottom 1% of payments) until the owner sets them.
+- **Severity score (0–100)** for every flag: a base score from how far past its threshold it is, plus 10 for each other check that flagged the same payment. 75+ is High, 50–74 Medium, below 50 Low.
 
 ## Run it
 
@@ -26,7 +48,9 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Open http://127.0.0.1:5000. Detection runs automatically the first time.
+Open http://127.0.0.1:5000, create an account at `/signup` (tick "Load sample transactions" for demo data), or log out at `/logout`.
+
+The HTML pages are placeholders. The real frontend should use the JSON API below.
 
 ## Tests
 
@@ -34,26 +58,58 @@ Open http://127.0.0.1:5000. Detection runs automatically the first time.
 python -m unittest
 ```
 
+## JSON API
+
+All routes are under `/api` and use a session cookie (log in or register first).
+**Every POST, PUT and PATCH must send the header `X-Requested-With: TreasuryGuard`** (blocks cross-site requests).
+Errors return `{"error": "message"}` with a 4xx status.
+
+| Method & route | What it does |
+|---|---|
+| `POST /api/auth/register` | `{email, password, full_name, business_name, business_type}` → creates owner + business, logs in |
+| `POST /api/auth/login` | `{email, password}` |
+| `POST /api/auth/logout` | |
+| `GET /api/auth/me` | Current user and business |
+| `GET /api/business` / `PUT /api/business` | Business profile (`name`, `business_type`, `currency` PHP/USD, `address`) |
+| `GET /api/categories` / `POST /api/categories` | List / add a category `{name}` |
+| `POST /api/uploads/preview` | Form field `file` (CSV) → columns, sample rows, `suggested_mapping`, field descriptions |
+| `POST /api/uploads` | Form fields `file` and `mapping` (JSON, e.g. `{"date":"Date","amount":"Amount"}`) → import summary + detection results |
+| `GET /api/uploads` | Upload history |
+| `POST /api/demo/load` | Import the Kaggle sample data into this business |
+| `GET /api/transactions` | Query: `category`, `from`, `to` (YYYY-MM-DD), `direction` (out/in), `flagged=1`, `page`, `per_page` (max 200). Each row includes its highest flag severity |
+| `GET /api/detection/settings` | Current settings, presets, suggested payment limits |
+| `PUT /api/detection/settings` | Change settings, e.g. `{"sensitivity": "high"}` or `{"zscore_threshold": 2.8}` or `{"reset": true}`; re-runs detection |
+| `POST /api/detection/run` | Re-run detection |
+| `GET /api/flags` | Query: `type`, `status`, `severity`, `min_score`, `sort` (severity/date). Most severe first by default |
+| `GET /api/flags/<flag_key>` | One flag |
+| `PATCH /api/flags/<flag_key>` | `{status: new|confirmed|dismissed}` |
+| `GET /api/summary` | Counts by check, severity, status and method; last run |
+
+CSV fields for mapping: `date` and `amount` (required); `reference`, `counterparty` (who was paid / account charged), `merchant`, `category`, `description`, `direction` (payment/expense vs income/deposit) are optional. Without a `direction` column every row is treated as a payment.
+
 ## Project layout
 
 ```
-app.py                       Flask routes
+app.py                       Flask app: pages + registers the API
 treasury_guard/
-  data_loader.py             loads and joins the dataset CSVs
-  rules.py                   the three detection rules
-  storage.py                 SQLite storage for flags, settings and runs
-templates/                   HTML pages
-static/style.css             minimal styles
-data/                        dataset CSVs
-tests/test_rules.py          unit tests
+  database.py                SQLite schema and connection
+  accounts.py                sign-up, login, business profile, categories
+  csv_import.py              CSV preview, column mapping, validation, import
+  transactions.py            transaction list and loading for detection
+  rules.py                   Increment 2 rule checks
+  statistical.py             Increment 3 Z-score and IQR checks
+  severity.py                Increment 3 severity scoring
+  settings.py                per-business thresholds and sensitivity presets
+  detection.py               runs all checks for a business and saves the flags
+  flags.py                   flag storage and review status
+  labels.py                  every name shown to owners (edit wording here)
+  demo_data.py               loads the Kaggle sample data
+  api.py                     JSON API
+templates/, static/          placeholder pages
+data/                        Kaggle sample data
+tests/                       unit and API tests
 ```
 
-## Dataset
+## Sample data
 
-[Fraud Detection Dataset](https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset) by goyaladi on Kaggle. This MVP uses three of its files, joined on `TransactionID`:
-
-- `transaction_records.csv` — TransactionID, Amount, CustomerID
-- `transaction_metadata.csv` — TransactionID, Timestamp, MerchantID
-- `transaction_category_labels.csv` — TransactionID, Category
-
-The dataset is synthetic: 1,000 transactions, one per hour from 2022-01-01 to 2022-02-11, with amounts spread evenly between 10 and 100. No exact duplicate charges exist in it, which is why the duplicate rule uses an amount tolerance. Amounts have no currency.
+[Fraud Detection Dataset](https://www.kaggle.com/datasets/goyaladi/fraud-detection-dataset) by goyaladi on Kaggle (three files joined on `TransactionID`). It is synthetic: 1,000 transactions, amounts spread evenly between 10 and 100. Because the amounts are so evenly spread, the Z-score and IQR checks find nothing in it; they are tested with other data in `tests/test_statistical.py`.

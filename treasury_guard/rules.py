@@ -1,33 +1,46 @@
-"""Sprint 2 rule-based anomaly detection.
+"""Sprint 2: rule-based checks.
 
-Three rules, each returning a list of flag dicts:
-  1. duplicate charges
-  2. unusual (too large / too small) outflows
-  3. category spending spikes against the monthly average
+Each check takes a business's money-out transactions (see transactions.load_outflows_for_detection)
+and its settings, and returns flag dicts. `fmt` formats money in the business's currency.
+
+Flag dict fields: key, type, method, txn_ids, occurred_at, amount, counterparty, merchant,
+category, reason, details (the numbers behind the flag, also used for severity scoring).
 """
 from collections import defaultdict
 
-DEFAULT_SETTINGS = {
-    "dup_window_hours": 72,     # max hours between two charges to count as a possible duplicate
-    "dup_tolerance_pct": 5.0,   # max difference between the two amounts, in percent
-    "large_limit": 97.0,        # flag outflows at or above this amount
-    "small_limit": 12.0,        # flag outflows at or below this amount
-    "spike_multiplier": 2.0,    # flag a category-day at or above this many times the monthly daily average
-}
+
+def _stamp(dt):
+    return dt.strftime("%Y-%m-%d %H:%M")
 
 
-def _fmt(n):
-    return f"{n:,.2f}"
+def _flag(key, kind, txn, reason, details, txn_ids=None, amount=None):
+    return {
+        "key": key,
+        "type": kind,
+        "method": "rule",
+        "txn_ids": txn_ids or [txn["id"]],
+        "occurred_at": _stamp(txn["timestamp"]),
+        "amount": txn["amount"] if amount is None else amount,
+        "counterparty": txn["counterparty"],
+        "merchant": txn["merchant"],
+        "category": txn["category"],
+        "reason": reason,
+        "details": details,
+    }
 
 
-def detect_duplicates(transactions, s):
-    """Same customer, near-identical amount, within the time window."""
-    flags = []
-    by_customer = defaultdict(list)
+def find_double_charges(transactions, s, fmt):
+    """Same account (or same merchant if no account), near-identical amount, within the time window."""
+    groups = defaultdict(list)
     for t in transactions:
-        by_customer[t["customer_id"]].append(t)
+        if t["counterparty"]:
+            groups[f"Account {t['counterparty']}"].append(t)
+        elif t["merchant"]:
+            groups[f"Merchant {t['merchant']}"].append(t)
+        # without an account or merchant we can't tell who was charged, so it's skipped
 
-    for group in by_customer.values():
+    flags = []
+    for who, group in groups.items():
         group.sort(key=lambda t: (t["timestamp"], t["id"]))
         for i, a in enumerate(group):
             for b in group[i + 1:]:
@@ -35,100 +48,83 @@ def detect_duplicates(transactions, s):
                 if hours > s["dup_window_hours"]:
                     break
                 diff = abs(b["amount"] - a["amount"])
-                if diff <= s["dup_tolerance_pct"] / 100 * max(a["amount"], b["amount"]):
-                    flags.append({
-                        "id": f"dup-{a['id']}-{b['id']}",
-                        "type": "duplicate",
-                        "txn_ids": [a["id"], b["id"]],
-                        "timestamp": b["timestamp"],
-                        "amount": b["amount"],
-                        "customer_id": b["customer_id"],
-                        "merchant_id": b["merchant_id"],
-                        "category": b["category"],
-                        "reason": (
-                            f"Customer {b['customer_id']} was charged {_fmt(b['amount'])} only {round(hours, 2):g} hours "
-                            f"after a charge of {_fmt(a['amount'])} (transaction #{a['id']}). The amounts differ by "
-                            f"{_fmt(diff)}, within the {s['dup_tolerance_pct']:g}% tolerance, so this may be a repeated charge."
-                        ),
-                    })
+                diff_pct = diff / max(a["amount"], b["amount"]) * 100
+                if diff_pct <= s["dup_tolerance_pct"]:
+                    flags.append(_flag(
+                        f"dup-{a['id']}-{b['id']}", "duplicate", b,
+                        (f"{who} was charged {fmt(b['amount'])} only {round(hours, 1):g} hours after a charge of "
+                         f"{fmt(a['amount'])}. The two amounts are {round(diff_pct, 1):g}% apart, so this may be "
+                         f"the same payment made twice."),
+                        {"hours_apart": round(hours, 2), "amount_diff_pct": round(diff_pct, 2),
+                         "first_amount": a["amount"], "window_hours": s["dup_window_hours"],
+                         "tolerance_pct": s["dup_tolerance_pct"]},
+                        txn_ids=[a["id"], b["id"]],
+                    ))
     return flags
 
 
-def detect_unusual_outflows(transactions, s):
-    """Amounts at or above the large limit, or at or below the small limit."""
+def find_unusual_payment_sizes(transactions, s, fmt):
+    """Payments at or above the large limit, or at or below the small limit."""
     flags = []
     for t in transactions:
         if t["amount"] >= s["large_limit"]:
-            kind, reason = "large", (
-                f"This outflow of {_fmt(t['amount'])} is at or above the large-outflow limit of {_fmt(s['large_limit'])}."
-            )
+            flags.append(_flag(
+                f"large-{t['id']}", "large", t,
+                f"This payment of {fmt(t['amount'])} is at or above your large-payment limit of {fmt(s['large_limit'])}.",
+                {"limit": s["large_limit"]},
+            ))
         elif t["amount"] <= s["small_limit"]:
-            kind, reason = "small", (
-                f"This outflow of {_fmt(t['amount'])} is at or below the small-outflow limit of {_fmt(s['small_limit'])}. "
-                "Very small charges are sometimes used to test a card or account."
-            )
-        else:
-            continue
-        flags.append({
-            "id": f"{kind}-{t['id']}",
-            "type": kind,
-            "txn_ids": [t["id"]],
-            "timestamp": t["timestamp"],
-            "amount": t["amount"],
-            "customer_id": t["customer_id"],
-            "merchant_id": t["merchant_id"],
-            "category": t["category"],
-            "reason": reason,
-        })
+            flags.append(_flag(
+                f"small-{t['id']}", "small", t,
+                (f"This payment of {fmt(t['amount'])} is at or below your small-payment limit of "
+                 f"{fmt(s['small_limit'])}. Very small charges are sometimes used to test a card or account."),
+                {"limit": s["small_limit"]},
+            ))
     return flags
 
 
-def detect_category_spikes(transactions, s):
-    """A day's spend in a category vs. that category's average daily spend for the month.
+def find_category_spending_jumps(transactions, s, fmt):
+    """A day's spending in a category compared with that category's average daily spending for the month.
 
     Monthly daily average = category total for the month / number of days in the data for that month.
     """
     days_in_month = defaultdict(set)
     month_total = defaultdict(float)
     day_total = defaultdict(float)
-    day_ids = defaultdict(list)
-
+    day_txns = defaultdict(list)
     for t in transactions:
         day = t["timestamp"].date()
         month = day.strftime("%Y-%m")
         days_in_month[month].add(day)
         month_total[(month, t["category"])] += t["amount"]
         day_total[(day, t["category"])] += t["amount"]
-        day_ids[(day, t["category"])].append(t["id"])
+        day_txns[(day, t["category"])].append(t)
 
     flags = []
     for (day, category), total in sorted(day_total.items()):
         month = day.strftime("%Y-%m")
-        avg = month_total[(month, category)] / len(days_in_month[month])
-        ratio = total / avg
+        average = month_total[(month, category)] / len(days_in_month[month])
+        ratio = total / average
         if ratio >= s["spike_multiplier"]:
-            ids = day_ids[(day, category)]
-            flags.append({
-                "id": f"spike-{category}-{day.isoformat()}",
-                "type": "spike",
-                "txn_ids": ids,
-                "timestamp": day,
-                "amount": round(total, 2),
-                "customer_id": None,
-                "merchant_id": None,
-                "category": category,
-                "reason": (
-                    f"{category} spending on {day.isoformat()} was {_fmt(total)} across {len(ids)} transactions, "
-                    f"{round(ratio, 2):g}x the average daily {category} spend for {month} ({_fmt(avg)})."
-                ),
-            })
+            txns = day_txns[(day, category)]
+            first = txns[0]
+            flag = _flag(
+                f"spike-{category}-{day.isoformat()}", "spike", first,
+                (f"{category} spending on {day.strftime('%b %d, %Y')} was {fmt(total)} across {len(txns)} payments, "
+                 f"{round(ratio, 2):g}x your usual daily {category} spending for {day.strftime('%B %Y')} "
+                 f"({fmt(average)} a day)."),
+                {"day_total": round(total, 2), "daily_average": round(average, 2), "ratio": round(ratio, 2),
+                 "multiplier": s["spike_multiplier"], "payments": len(txns)},
+                txn_ids=[t["id"] for t in txns], amount=round(total, 2),
+            )
+            flag.update(occurred_at=day.isoformat(), counterparty=None, merchant=None)
+            flags.append(flag)
     return flags
 
 
-def run_all_rules(transactions, settings=None):
-    s = {**DEFAULT_SETTINGS, **(settings or {})}
+def run_rule_checks(transactions, settings, fmt):
     return (
-        detect_duplicates(transactions, s)
-        + detect_unusual_outflows(transactions, s)
-        + detect_category_spikes(transactions, s)
+        find_double_charges(transactions, settings, fmt)
+        + find_unusual_payment_sizes(transactions, settings, fmt)
+        + find_category_spending_jumps(transactions, settings, fmt)
     )

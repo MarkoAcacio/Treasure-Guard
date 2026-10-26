@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<h2>Log in</h2>
+{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
+<form method="post">
+  <p><label for="email">Email</label><br>
+    <input id="email" name="email" type="email" required value="{{ form.get('email', '') }}"></p>
+  <p><label for="password">Password</label><br>
+    <input id="password" name="password" type="password" required></p>
+  <p><button type="submit">Log in</button></p>
+</form>
+<p>New to Treasury Guard? <a href="{{ url_for('signup_page') }}">Create an account</a></p>
+{% endblock %}
