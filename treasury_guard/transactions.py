@@ -85,5 +85,21 @@ def load_outflows_for_detection(conn, business_id):
     ]
 
 
+def references_for(conn, business_id, ids):
+    """{transaction id: reference number (or '#id' when the file had none)} for display."""
+    ids = list(ids)
+    if not ids:
+        return {}
+    out = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        marks = ",".join("?" * len(chunk))
+        for r in conn.execute(
+            f"SELECT id, reference FROM transactions WHERE business_id = ? AND id IN ({marks})", (business_id, *chunk)
+        ):
+            out[r["id"]] = r["reference"] or f"#{r['id']}"
+    return out
+
+
 def count_transactions(conn, business_id):
     return conn.execute("SELECT COUNT(*) FROM transactions WHERE business_id = ?", (business_id,)).fetchone()[0]

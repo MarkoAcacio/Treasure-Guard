@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}AI models{% endblock %}
+{% block content %}
+<h2>AI models</h2>
+<p>Status: <strong>{{ status }}</strong></p>
+{% if card %}
+<p>Trained {{ card.trained_at.replace('T', ' ') }} with scikit-learn {{ card.sklearn_version }}.</p>
+
+<h3>Training data</h3>
+<p><a href="{{ card.training_data.dataset }}">{{ card.training_data.dataset }}</a><br>
+  {{ card.training_data.description }}<br>
+  Training: {{ card.training_data.train_file }} · Testing: {{ card.training_data.test_file }}<br>
+  {{ card.training_data.currency }}</p>
+<table>
+  <tr><th>Column used</th><th>Why</th></tr>
+  {% for col, why in card.training_data.columns_used.items() %}<tr><td>{{ col }}</td><td>{{ why }}</td></tr>{% endfor %}
+</table>
+<table>
+  <tr><th>Columns dropped</th><th>Why</th></tr>
+  {% for col, why in card.training_data.columns_dropped.items() %}<tr><td>{{ col }}</td><td>{{ why }}</td></tr>{% endfor %}
+</table>
+
+<h3>Test results (on later, unseen data)</h3>
+{% for variant, e in card.evaluation.items() %}
+<h4>{{ 'Uploads with time of day' if variant == 'with_time' else 'Uploads with dates only' }}
+  — {{ e.test_rows }} payments, {{ e.test_fraud }} fraud</h4>
+<table>
+  <tr><th>Model</th><th>ROC-AUC</th><th>PR-AUC</th><th>Precision</th><th>Recall</th><th>Flagged</th></tr>
+  <tr><td>Fraud model (gradient boosting)</td><td>{{ e.fraud_classifier.roc_auc }}</td><td>{{ e.fraud_classifier.pr_auc }}</td>
+      <td>{{ e.fraud_classifier.at_threshold.precision }}</td><td>{{ e.fraud_classifier.at_threshold.recall }}</td>
+      <td>{{ e.fraud_classifier.at_threshold.flagged }}</td></tr>
+  {% set iso = e.isolation_forest %}
+  {% set iso_at = iso['at_97th_percentile_per_business'] %}
+  <tr><td>Unusual-pattern model (Isolation Forest, 97th percentile)</td><td>{{ iso.roc_auc }}</td><td>{{ iso.pr_auc }}</td>
+      <td>{{ iso_at.precision }}</td><td>{{ iso_at.recall }}</td><td>{{ iso_at.flagged }}</td></tr>
+  {% set rule = e.baseline_rule_amount_top_1pct_per_business %}
+  <tr><td>Simple rule: top 1% amount (for comparison)</td><td>—</td><td>—</td>
+      <td>{{ rule.precision }}</td><td>{{ rule.recall }}</td><td>{{ rule.flagged }}</td></tr>
+</table>
+{% endfor %}
+<p>Precision: share of flags that were real fraud. Recall: share of fraud that was flagged.</p>
+
+<h3>Features</h3>
+<p>{{ card.variants.with_time.features | join(', ') }}. See docs/CSV_FORMAT.md for what each means.</p>
+{% endif %}
+{% endblock %}

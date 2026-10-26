@@ -67,6 +67,9 @@
 </form>
 <p>Columns: Date and Amount are required; Type (payment/income), Payee, Category, Merchant, Reference and Description help.
   Include the time of each payment if you have it. <a href="{{ url_for('template_csv') }}">Download a template</a>.</p>
+<form method="post" action="{{ url_for('upload_demo') }}">
+  <p>No file yet? <button type="submit">Load sample data</button> (1,000 transactions from a Kaggle dataset)</p>
+</form>
 {% endif %}
 
 <h3>Past uploads</h3>

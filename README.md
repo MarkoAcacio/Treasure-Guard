@@ -72,7 +72,9 @@ python app.py
 
 Open http://127.0.0.1:5000, create an account at `/signup` (tick "Load sample transactions" for demo data), or log out at `/logout`.
 
-The HTML pages are placeholders. The real frontend should use the JSON API below.
+Pages (plain, unstyled for now): Anomaly flags (dashboard), Transactions, Upload CSV (with column matching and a "Load sample data" button), Detection settings (sensitivity presets, rule, statistical and AI settings), AI models (training data and test results), Business profile (details and categories), Log out.
+
+The JSON API below exposes the same features for a future frontend.
 
 ## Tests
 

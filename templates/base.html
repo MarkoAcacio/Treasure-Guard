@@ -10,11 +10,14 @@
   <div class="layout">
     <nav>
       <h1>Treasury Guard</h1>
-      <p>Increment 2</p>
+      <p>{% if current_business %}{{ current_business.name }}{% else %}Increments 1–4{% endif %}</p>
       <ul>
         <li><a href="{{ url_for('dashboard') }}">Anomaly flags</a></li>
+        <li><a href="{{ url_for('transactions_page') }}">Transactions</a></li>
         <li><a href="{{ url_for('upload_page') }}">Upload CSV</a></li>
-        <li><a href="{{ url_for('rules') }}">Detection rules</a></li>
+        <li><a href="{{ url_for('rules') }}">Detection settings</a></li>
+        <li><a href="{{ url_for('model_page') }}">AI models</a></li>
+        <li><a href="{{ url_for('business_page') }}">Business profile</a></li>
         {% if current_business %}<li><a href="{{ url_for('logout_page') }}">Log out</a></li>{% endif %}
       </ul>
       <p>Later increments</p>

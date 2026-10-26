@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Business profile{% endblock %}
+{% block content %}
+<h2>Business profile</h2>
+{% if message %}<p role="status">{{ message }}</p>{% endif %}
+{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
+<p>Signed in as {{ user.full_name }} ({{ user.email }}), owner.</p>
+
+<form method="post">
+  <input type="hidden" name="action" value="profile">
+  <p><label for="name">Business name</label><br>
+    <input id="name" name="name" type="text" required value="{{ business.name }}"></p>
+  <p><label for="business_type">Business type</label><br>
+    <select id="business_type" name="business_type">
+      {% for t in business_types %}<option value="{{ t }}" {% if business.business_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select></p>
+  <p><label for="currency">Currency</label><br>
+    <select id="currency" name="currency">
+      {% for c in currencies %}<option value="{{ c }}" {% if business.currency == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select></p>
+  <p><label for="address">Address</label><br>
+    <input id="address" name="address" type="text" value="{{ business.address }}"></p>
+  <p><button type="submit">Save profile</button></p>
+</form>
+
+<h3>Spending categories</h3>
+<p>{{ categories | join(', ') }}</p>
+<form method="post">
+  <input type="hidden" name="action" value="add_category">
+  <label for="category">New category</label>
+  <input id="category" name="category" type="text" maxlength="60" required>
+  <button type="submit">Add</button>
+</form>
+<p>Categories in your uploads are added automatically.</p>
+{% endblock %}

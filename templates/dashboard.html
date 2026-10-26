@@ -1,62 +1,66 @@
 {% extends "base.html" %}
 {% block title %}Anomaly flags{% endblock %}
 {% block content %}
-<h2>Anomaly flags</h2>
+<h2>Anomaly flags — {{ current_business.name }}</h2>
 <p>
-  Kaggle Fraud Detection Dataset · {{ scanned }} transactions scanned ·
-  {% if last_run %}last run {{ last_run.ran_at.replace('T', ' ') }}{% else %}not run yet{% endif %}
+  {{ scanned }} transactions ·
+  {% if last_run %}last checked {{ last_run.ran_at.replace('T', ' ') }}{% else %}not checked yet{% endif %}
+  {% if not scanned %}· <a href="{{ url_for('upload_page') }}">Upload a CSV to get started</a>{% endif %}
 </p>
 <form method="post" action="{{ url_for('run') }}">
-  <button type="submit">Run detection</button>
+  <button type="submit">Run detection again</button>
 </form>
 
 <h3>Summary</h3>
+<p>
+  Severity: High {{ by_severity.get('high', 0) }} · Medium {{ by_severity.get('medium', 0) }} · Low {{ by_severity.get('low', 0) }}
+  &nbsp;|&nbsp; {{ status_names['new'] }}: {{ by_status.get('new', 0) }} ·
+  {{ status_names['confirmed'] }}: {{ by_status.get('confirmed', 0) }} ·
+  {{ status_names['dismissed'] }}: {{ by_status.get('dismissed', 0) }}
+</p>
 <table>
   <thead>
-    <tr><th>Rule</th><th>Setting</th><th>Flags</th></tr>
+    <tr><th>Check</th><th>Current setting</th><th>Flags</th></tr>
   </thead>
   <tbody>
+    {% for key, setting in checks %}
     <tr>
-      <td>Duplicate charge</td>
-      <td>Same customer, amounts within {{ settings.dup_tolerance_pct }}%, at most {{ settings.dup_window_hours }} hours apart</td>
-      <td>{{ counts.get('duplicate', 0) }}</td>
+      <td><a href="{{ url_for('dashboard', type=key) }}">{{ rule_names[key] }}</a></td>
+      <td>{{ setting }}</td>
+      <td>{{ counts.get(key, 0) }}</td>
     </tr>
-    <tr>
-      <td>Large outflow</td>
-      <td>Amount ≥ {{ '%.2f' % settings.large_limit }}</td>
-      <td>{{ counts.get('large', 0) }}</td>
-    </tr>
-    <tr>
-      <td>Small outflow</td>
-      <td>Amount ≤ {{ '%.2f' % settings.small_limit }}</td>
-      <td>{{ counts.get('small', 0) }}</td>
-    </tr>
-    <tr>
-      <td>Category spike</td>
-      <td>Day's category spend ≥ {{ settings.spike_multiplier }}× its monthly daily average</td>
-      <td>{{ counts.get('spike', 0) }}</td>
-    </tr>
-    <tr>
-      <th>Total</th><td></td><th>{{ total }}</th>
-    </tr>
+    {% endfor %}
+    <tr><th>Total</th><td><a href="{{ url_for('rules') }}">Change settings</a></td><th>{{ total }}</th></tr>
   </tbody>
 </table>
 
 <h3>Flagged transactions</h3>
 <form method="get" action="{{ url_for('dashboard') }}">
-  <label for="type">Rule</label>
+  <label for="type">Check</label>
   <select id="type" name="type">
-    <option value="">All rules</option>
+    <option value="">All checks</option>
     {% for key, name in rule_names.items() %}
-    <option value="{{ key }}" {% if key == selected_type %}selected{% endif %}>{{ name }}</option>
+    <option value="{{ key }}" {% if key == selected.type %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  <label for="severity">Severity</label>
+  <select id="severity" name="severity">
+    <option value="">Any severity</option>
+    {% for key, name in severity_names.items() %}
+    <option value="{{ key }}" {% if key == selected.severity %}selected{% endif %}>{{ name }}</option>
     {% endfor %}
   </select>
   <label for="status">Status</label>
   <select id="status" name="status">
     <option value="">Any status</option>
     {% for key, name in status_names.items() %}
-    <option value="{{ key }}" {% if key == selected_status %}selected{% endif %}>{{ name }}</option>
+    <option value="{{ key }}" {% if key == selected.status %}selected{% endif %}>{{ name }}</option>
     {% endfor %}
+  </select>
+  <label for="sort">Sort by</label>
+  <select id="sort" name="sort">
+    <option value="severity" {% if selected.sort == 'severity' %}selected{% endif %}>Most severe first</option>
+    <option value="date" {% if selected.sort == 'date' %}selected{% endif %}>Newest first</option>
   </select>
   <button type="submit">Filter</button>
 </form>
@@ -66,30 +70,30 @@
 <table>
   <thead>
     <tr>
-      <th>Rule</th><th>Date</th><th>Transaction</th><th>Customer</th><th>Merchant</th>
+      <th>Severity</th><th>Check</th><th>Date</th><th>Transaction</th><th>Payee</th>
       <th>Category</th><th>Amount</th><th>Why it was flagged</th><th>Status</th><th>Review</th>
     </tr>
   </thead>
   <tbody>
     {% for f in flags %}
     <tr>
-      <td>{{ rule_names[f.type] }}</td>
-      <td>{{ f.timestamp }}</td>
+      <td>{{ severity_names[f.severity] }} ({{ f.severity_score }})</td>
+      <td>{{ rule_names.get(f.type, f.type) }}<br><small>{{ method_names.get(f.method, f.method) }}</small></td>
+      <td>{{ f.occurred_at }}</td>
       <td>
-        {% if f.type == 'duplicate' %}#{{ f.txn_ids[0] }} → #{{ f.txn_ids[1] }}
-        {% elif f.type == 'spike' %}{{ f.txn_ids|length }} transactions
-        {% else %}#{{ f.txn_ids[0] }}{% endif %}
+        {% if f.type == 'duplicate' %}{{ refs.get(f.txn_ids[0]) }} → {{ refs.get(f.txn_ids[1]) }}
+        {% elif f.type == 'spike' %}{{ f.txn_ids|length }} payments
+        {% else %}{{ refs.get(f.txn_ids[0]) }}{% endif %}
       </td>
-      <td>{{ f.customer_id or '—' }}</td>
-      <td>{{ f.merchant_id or '—' }}</td>
+      <td>{{ f.counterparty or f.merchant or '—' }}</td>
       <td>{{ f.category }}</td>
-      <td class="num">${{ '%.2f' % f.amount }}</td>
+      <td class="num">{{ f.amount | money }}</td>
       <td>{{ f.reason }}</td>
       <td>{{ status_names[f.status] }}</td>
       <td>
-        <form method="post" action="{{ url_for('update_status', flag_id=f.id) }}">
-          {% if f.status != 'confirmed' %}<button name="status" value="confirmed">Confirm</button>{% endif %}
-          {% if f.status != 'dismissed' %}<button name="status" value="dismissed">Dismiss</button>{% endif %}
+        <form method="post" action="{{ url_for('update_status', flag_id=f.flag_key) }}">
+          {% if f.status != 'confirmed' %}<button name="status" value="confirmed">Confirm issue</button>{% endif %}
+          {% if f.status != 'dismissed' %}<button name="status" value="dismissed">Mark OK</button>{% endif %}
           {% if f.status != 'new' %}<button name="status" value="new">Reopen</button>{% endif %}
         </form>
       </td>

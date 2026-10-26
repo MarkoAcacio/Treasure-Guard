@@ -12,8 +12,8 @@ from pathlib import Path
 
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for
 
-from treasury_guard import (accounts, csv_import, database, demo_data, detection, flags, labels, settings,
-                            transactions)
+from treasury_guard import (accounts, anomaly_model, csv_import, database, demo_data, detection, flags, labels,
+                            settings, severity, transactions)
 from treasury_guard.accounts import AccountError
 from treasury_guard.csv_import import CsvImportError
 from treasury_guard.api import api
@@ -29,6 +29,13 @@ def _secret_key(instance_dir):
     if not path.exists():
         path.write_text(secrets.token_hex(32))
     return path.read_text().strip()
+
+
+def _percent_to_fraction(text):
+    try:
+        return float(text) / 100
+    except ValueError:
+        return text  # settings validation reports it
 
 
 def create_app(db_path=None):
@@ -109,12 +116,38 @@ def create_app(db_path=None):
         session.clear()
         return redirect(url_for("login_page"))
 
-    # ---------- Existing placeholder pages (templates unchanged) ----------
+    # ---------- Pages ----------
 
-    def flags_for_template(rows):
-        """The current dashboard template expects these field names."""
-        return [{**f, "id": f["flag_key"], "timestamp": f["occurred_at"],
-                 "customer_id": f["counterparty"], "merchant_id": f["merchant"]} for f in rows]
+    @app.template_filter("money")
+    def money_filter(amount):
+        currency = g.business["currency"] if g.get("business") else "PHP"
+        return labels.money_formatter(currency)(amount or 0)
+
+    def check_descriptions(s, model_threshold):
+        """One line per check, describing its current setting."""
+        fraud_level = s["fraud_min_probability"] or model_threshold
+        return [
+            ("duplicate", f"Same account, amounts within {s['dup_tolerance_pct']:g}%, at most "
+                          f"{s['dup_window_hours']:g} hours apart"),
+            ("large", f"Amount at or above {money_filter(s['large_limit'])}"),
+            ("small", f"Amount at or below {money_filter(s['small_limit'])}"),
+            ("spike", f"A day's category spending at least {s['spike_multiplier']:g}x its daily average for the month"),
+            ("zscore", f"At least {s['zscore_threshold']:g} standard deviations from the category average"
+                       + ("" if s["statistical_enabled"] else " (turned off)")),
+            ("iqr", f"Beyond {s['iqr_multiplier']:g}x the normal range (IQR) of the category"
+                    + ("" if s["statistical_enabled"] else " (turned off)")),
+            ("fraud", (f"Fraud risk at least {fraud_level * 100:.0f}%" if fraud_level else "Fraud model")
+                      + ("" if s["fraud_model_enabled"] else " (turned off)")),
+            ("ml", f"More unusual than {s['ml_percentile']:g}% of your payments"
+                   + ("" if s["ml_enabled"] else " (turned off)")),
+        ]
+
+    def model_threshold_or_none():
+        try:
+            anomaly_model.load_models()
+            return anomaly_model.model_card()["variants"]["with_time"]["threshold"]
+        except (anomaly_model.ModelUnavailable, OSError, KeyError):
+            return None
 
     @app.get("/")
     def dashboard():
@@ -123,20 +156,84 @@ def create_app(db_path=None):
         bid = g.business["id"]
         flag_type = request.args.get("type") or None
         status = request.args.get("status") or None
+        severity = request.args.get("severity") or None
+        sort = "date" if request.args.get("sort") == "date" else "severity"
+        rows = flags.list_flags(g.db, bid, flag_type, status, severity, sort=sort)
         counts = flags.count_by(g.db, bid, "type")
+        refs = transactions.references_for(g.db, bid, {i for f in rows for i in f["txn_ids"]})
         return render_template(
             "dashboard.html",
-            flags=flags_for_template(flags.list_flags(g.db, bid, flag_type, status, sort="date")),
+            flags=rows,
+            refs=refs,
             counts=counts,
             total=sum(counts.values()),
+            by_severity=flags.count_by(g.db, bid, "severity"),
+            by_status=flags.count_by(g.db, bid, "status"),
             last_run=flags.last_run(g.db, bid),
             scanned=transactions.count_transactions(g.db, bid),
-            settings=settings.get_settings(g.db, bid),
+            checks=check_descriptions(settings.get_settings(g.db, bid), model_threshold_or_none()),
             rule_names=labels.FLAG_TYPE_NAMES,
+            method_names=labels.METHOD_NAMES,
             status_names=labels.STATUS_NAMES,
-            selected_type=flag_type or "",
-            selected_status=status or "",
+            severity_names=labels.SEVERITY_NAMES,
+            selected={"type": flag_type or "", "status": status or "", "severity": severity or "", "sort": sort},
         )
+
+    @app.get("/transactions")
+    def transactions_page():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        a = request.args
+        try:
+            page = max(1, int(a.get("page", 1)))
+        except ValueError:
+            page = 1
+        result = transactions.list_transactions(
+            g.db, g.business["id"], category=a.get("category") or None, date_from=a.get("from") or None,
+            date_to=a.get("to") or None, direction=a.get("direction") or None,
+            flagged_only=a.get("flagged") == "1", page=page, per_page=50)
+        pages = max(1, -(-result["total"] // result["per_page"]))
+        args = {k: v for k, v in a.items() if k != "page" and v}
+        return render_template("transactions.html", result=result, pages=pages, args=args,
+                               categories=accounts.list_categories(g.db, g.business["id"]),
+                               level_for=lambda score: None if score is None else labels.SEVERITY_NAMES[
+                                   severity.level_for(score)])
+
+    @app.route("/business", methods=["GET", "POST"])
+    def business_page():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        bid = g.business["id"]
+        message = error = None
+        if request.method == "POST":
+            try:
+                if request.form.get("action") == "add_category":
+                    name = accounts.add_category(g.db, bid, request.form.get("category"))
+                    message = f"Added category {name}."
+                else:
+                    g.business = accounts.update_business(g.db, bid, {
+                        k: request.form.get(k, "") for k in ("name", "business_type", "currency", "address")})
+                    message = "Saved."
+            except AccountError as e:
+                error = str(e)
+        return render_template("business.html", business=g.business, message=message, error=error,
+                               business_types=accounts.BUSINESS_TYPES, currencies=accounts.CURRENCIES,
+                               categories=accounts.list_categories(g.db, bid),
+                               user=accounts.get_user(g.db, g.user_id))
+
+    @app.get("/model")
+    def model_page():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        card, status = None, "ready"
+        try:
+            card = anomaly_model.model_card()
+            anomaly_model.load_models()
+        except OSError:
+            status = "No trained model yet. Run: python -m treasury_guard.training"
+        except anomaly_model.ModelUnavailable as e:
+            status = str(e)
+        return render_template("model.html", card=card, status=status)
 
     @app.post("/run")
     def run():
@@ -163,11 +260,23 @@ def create_app(db_path=None):
         current = settings.get_settings(g.db, bid)
         error = None
         if request.method == "POST":
-            changes = {"reset": True} if "reset" in request.form else {
-                k: request.form[k] for k in
-                ("dup_window_hours", "dup_tolerance_pct", "large_limit", "small_limit", "spike_multiplier")
-                if k in request.form
-            }
+            form = request.form
+            if "reset" in form:
+                changes = {"reset": True}
+            else:
+                numbers = ("dup_window_hours", "dup_tolerance_pct", "large_limit", "small_limit", "spike_multiplier",
+                           "zscore_threshold", "iqr_multiplier", "min_category_samples", "ml_percentile")
+                changes = {k: form[k] for k in numbers if form.get(k, "") != ""}
+                for switch in ("statistical_enabled", "fraud_model_enabled", "ml_enabled"):
+                    changes[switch] = switch in form
+                fraud_pct = form.get("fraud_min_probability_pct", "").strip()
+                changes["fraud_min_probability"] = None if fraud_pct == "" else _percent_to_fraction(fraud_pct)
+                level = form.get("sensitivity")
+                if level and level != current["sensitivity"] and level in settings.SENSITIVITY_PRESETS:
+                    # A new preset wins over the old values still sitting in the form.
+                    for key in settings.PRESET_KEYS:
+                        changes.pop(key, None)
+                    changes["sensitivity"] = level
             try:
                 settings.update_settings(g.db, bid, changes)
             except SettingsError as e:
@@ -176,7 +285,11 @@ def create_app(db_path=None):
             else:
                 detection.run_detection(g.db, bid)
                 return redirect(url_for("dashboard"))
-        return render_template("rules.html", settings=current, error=error)
+        amounts = [t["amount"] for t in transactions.load_outflows_for_detection(g.db, bid)]
+        return render_template("rules.html", settings=current, error=error,
+                               suggested=settings.suggest_limits(amounts),
+                               model_threshold=model_threshold_or_none(),
+                               sensitivity_names=labels.SENSITIVITY_NAMES)
 
     # ---------- CSV upload page (barebones, two steps: preview + column mapping, then import) ----------
 
@@ -241,6 +354,18 @@ def create_app(db_path=None):
             return _upload_page(error=str(e), preview=preview, filename=pending["filename"])
         path.unlink(missing_ok=True)
         session.pop("pending_upload", None)
+        result = detection.run_detection(g.db, g.business["id"])
+        found = {labels.FLAG_TYPE_NAMES.get(k, k): v for k, v in result["counts"].items()}
+        return _upload_page(summary=summary, found=found, found_total=result["total"])
+
+    @app.post("/upload/demo")
+    def upload_demo():
+        if (redirect_response := login_required_page()):
+            return redirect_response
+        try:
+            summary = demo_data.load_demo_data(g.db, g.business["id"])
+        except CsvImportError as e:
+            return _upload_page(error=str(e))
         result = detection.run_detection(g.db, g.business["id"])
         found = {labels.FLAG_TYPE_NAMES.get(k, k): v for k, v in result["counts"].items()}
         return _upload_page(summary=summary, found=found, found_total=result["total"])
