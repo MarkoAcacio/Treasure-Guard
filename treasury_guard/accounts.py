@@ -56,6 +56,8 @@ def register_owner(conn, email, password, full_name, business_name, business_typ
         "INSERT INTO categories (business_id, name) VALUES (?, ?)",
         [(business_id, name) for name in DEFAULT_CATEGORIES],
     )
+    conn.execute("INSERT INTO members (business_id, user_id, role, added_at) VALUES (?, ?, 'owner', ?)",
+                 (business_id, user_id, created))
     conn.commit()
     return user_id, business_id
 
@@ -74,10 +76,72 @@ def get_user(conn, user_id):
 
 
 def get_business_for_user(conn, user_id):
+    """The user's business, with their `role` in it (owner, reviewer or viewer)."""
     row = conn.execute(
-        "SELECT * FROM businesses WHERE owner_user_id = ? ORDER BY id LIMIT 1", (user_id,)
+        "SELECT b.*, m.role FROM businesses b JOIN members m ON m.business_id = b.id WHERE m.user_id = ?", (user_id,)
     ).fetchone()
     return dict(row) if row else None
+
+
+# ---------- Team members and roles ----------
+
+ROLES = ("owner", "reviewer", "viewer")  # most to least access
+
+
+def can(role, needed):
+    """True if `role` has at least the access of `needed`."""
+    return role in ROLES and ROLES.index(role) <= ROLES.index(needed)
+
+
+def list_members(conn, business_id):
+    return [dict(r) for r in conn.execute(
+        """SELECT u.id, u.email, u.full_name, m.role, m.added_at FROM members m JOIN users u ON u.id = m.user_id
+           WHERE m.business_id = ? ORDER BY m.role = 'owner' DESC, u.full_name""", (business_id,))]
+
+
+def add_member(conn, business_id, email, full_name, password, role):
+    """Create an account for a team member. They log in with the email and password the owner gives them."""
+    if role not in ("reviewer", "viewer"):
+        raise AccountError("Team members can be reviewers or viewers.")
+    email = _clean(email).lower()
+    full_name = _clean(full_name)
+    if not EMAIL_RE.match(email):
+        raise AccountError("Enter a valid email address.")
+    if not full_name:
+        raise AccountError("Enter the person's name.")
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        raise AccountError(f"Give them a password with at least {MIN_PASSWORD_LENGTH} characters.")
+    if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+        raise AccountError("Someone already uses this email in Treasury Guard.")
+    created = now()
+    user_id = conn.execute(
+        "INSERT INTO users (email, password_hash, full_name, created_at) VALUES (?, ?, ?, ?)",
+        (email, generate_password_hash(password), full_name, created),
+    ).lastrowid
+    conn.execute("INSERT INTO members (business_id, user_id, role, added_at) VALUES (?, ?, ?, ?)",
+                 (business_id, user_id, role, created))
+    conn.commit()
+    return user_id
+
+
+def set_member_role(conn, business_id, user_id, role):
+    if role not in ("reviewer", "viewer"):
+        raise AccountError("Team members can be reviewers or viewers.")
+    cur = conn.execute("UPDATE members SET role = ? WHERE business_id = ? AND user_id = ? AND role != 'owner'",
+                       (role, business_id, user_id))
+    conn.commit()
+    if cur.rowcount != 1:
+        raise AccountError("That person isn't on your team.")
+
+
+def remove_member(conn, business_id, user_id):
+    """Removes the member and their login. The owner can't be removed."""
+    cur = conn.execute("DELETE FROM members WHERE business_id = ? AND user_id = ? AND role != 'owner'",
+                       (business_id, user_id))
+    if cur.rowcount != 1:
+        raise AccountError("That person isn't on your team.")
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
 
 
 def update_business(conn, business_id, changes):

@@ -1,0 +1,48 @@
+{# Small UI pieces shared by every page. #}
+
+{% macro icon(name) -%}
+<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro sev(level, score=None) -%}
+<span class="badge sev-{{ level }}">{{ severity_names[level] }}{% if score is not none %} · {{ score }}{% endif %}</span>
+{%- endmacro %}
+
+{% macro status(key) -%}
+<span class="badge st-{{ key }}">{{ status_names[key] }}</span>
+{%- endmacro %}
+
+{% macro empty(text, link=None, label=None, icon_name="inbox") -%}
+<div class="empty">{{ icon(icon_name) }}<p>{{ text }}</p>{% if link %}<a class="btn" href="{{ link }}">{{ label }}</a>{% endif %}</div>
+{%- endmacro %}
+
+{# Bar chart of spending per day/week/month; the flagged part of each bar is drawn on top in orange. #}
+{% macro trend_chart(trend) -%}
+{% set b = trend.buckets %}
+{% set n = b|length %}
+{% set W, H, L, R, T, B = 720, 230, 58, 8, 10, 26 %}
+{% set pw, ph = W - L - R, H - T - B %}
+{% set top = (b|map(attribute='spent')|max) or 1 %}
+{% set slot = pw / n %}
+{% set bw = [slot * 0.72, 28]|min %}
+{% set every = ((n / 8)|round(0, 'ceil'))|int or 1 %}
+<svg class="chart" viewBox="0 0 {{ W }} {{ H }}" role="img"
+     aria-label="Spending per {{ trend.unit }} from {{ b[0].label }} to {{ b[-1].label }}. Highest {{ top|money }}.">
+  {% for frac in (0, 0.5, 1) %}
+  {% set y = T + ph - ph * frac %}
+  <line class="{{ 'axis' if frac == 0 else 'grid-line' }}" x1="{{ L }}" x2="{{ W - R }}" y1="{{ y }}" y2="{{ y }}"></line>
+  <text x="{{ L - 8 }}" y="{{ y + 4 }}" text-anchor="end">{{ (top * frac)|compact }}</text>
+  {% endfor %}
+  {% for d in b %}
+  {% set x = L + slot * loop.index0 + (slot - bw) / 2 %}
+  {% set hs = ph * d.spent / top %}
+  {% set hf = ph * d.flagged / top %}
+  <g>
+    <title>{{ d.label }}: {{ d.spent|money }} spent{% if d.flagged %}, {{ d.flagged|money }} of it flagged{% endif %}</title>
+    <rect class="bar-spent" x="{{ x }}" y="{{ T + ph - hs }}" width="{{ bw }}" height="{{ hs }}" rx="2"></rect>
+    {% if d.flagged %}<rect class="bar-flagged" x="{{ x }}" y="{{ T + ph - hf }}" width="{{ bw }}" height="{{ hf }}" rx="2"></rect>{% endif %}
+    {% if loop.index0 % every == 0 %}<text x="{{ x + bw / 2 }}" y="{{ H - 8 }}" text-anchor="middle">{{ d.label }}</text>{% endif %}
+  </g>
+  {% endfor %}
+</svg>
+{%- endmacro %}

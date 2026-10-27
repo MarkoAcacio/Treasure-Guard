@@ -1,107 +1,144 @@
 {% extends "base.html" %}
-{% block title %}Anomaly flags{% endblock %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Overview{% endblock %}
 {% block content %}
-<h2>Anomaly flags — {{ current_business.name }}</h2>
-<p>
-  {{ scanned }} transactions ·
-  {% if last_run %}last checked {{ last_run.ran_at.replace('T', ' ') }}{% else %}not checked yet{% endif %}
-  {% if not scanned %}· <a href="{{ url_for('upload_page') }}">Upload a CSV to get started</a>{% endif %}
-</p>
-<form method="post" action="{{ url_for('run') }}">
-  <button type="submit">Run detection again</button>
-</form>
-
-<h3>Summary</h3>
-<p>
-  Severity: High {{ by_severity.get('high', 0) }} · Medium {{ by_severity.get('medium', 0) }} · Low {{ by_severity.get('low', 0) }}
-  &nbsp;|&nbsp; {{ status_names['new'] }}: {{ by_status.get('new', 0) }} ·
-  {{ status_names['confirmed'] }}: {{ by_status.get('confirmed', 0) }} ·
-  {{ status_names['dismissed'] }}: {{ by_status.get('dismissed', 0) }}
-</p>
-<table>
-  <thead>
-    <tr><th>Check</th><th>Current setting</th><th>Flags</th></tr>
-  </thead>
-  <tbody>
-    {% for key, setting in checks %}
-    <tr>
-      <td><a href="{{ url_for('dashboard', type=key) }}">{{ rule_names[key] }}</a></td>
-      <td>{{ setting }}</td>
-      <td>{{ counts.get(key, 0) }}</td>
-    </tr>
-    {% endfor %}
-    <tr><th>Total</th><td><a href="{{ url_for('rules') }}">Change settings</a></td><th>{{ total }}</th></tr>
-  </tbody>
-</table>
-
-<h3>Flagged transactions</h3>
-<form method="get" action="{{ url_for('dashboard') }}">
-  <label for="type">Check</label>
-  <select id="type" name="type">
-    <option value="">All checks</option>
-    {% for key, name in rule_names.items() %}
-    <option value="{{ key }}" {% if key == selected.type %}selected{% endif %}>{{ name }}</option>
-    {% endfor %}
-  </select>
-  <label for="severity">Severity</label>
-  <select id="severity" name="severity">
-    <option value="">Any severity</option>
-    {% for key, name in severity_names.items() %}
-    <option value="{{ key }}" {% if key == selected.severity %}selected{% endif %}>{{ name }}</option>
-    {% endfor %}
-  </select>
-  <label for="status">Status</label>
-  <select id="status" name="status">
-    <option value="">Any status</option>
-    {% for key, name in status_names.items() %}
-    <option value="{{ key }}" {% if key == selected.status %}selected{% endif %}>{{ name }}</option>
-    {% endfor %}
-  </select>
-  <label for="sort">Sort by</label>
-  <select id="sort" name="sort">
-    <option value="severity" {% if selected.sort == 'severity' %}selected{% endif %}>Most severe first</option>
-    <option value="date" {% if selected.sort == 'date' %}selected{% endif %}>Newest first</option>
-  </select>
-  <button type="submit">Filter</button>
-</form>
-<p>Showing {{ flags|length }} of {{ total }} flags</p>
-
-<div class="scroll">
-<table>
-  <thead>
-    <tr>
-      <th>Severity</th><th>Check</th><th>Date</th><th>Transaction</th><th>Payee</th>
-      <th>Category</th><th>Amount</th><th>Why it was flagged</th><th>Status</th><th>Review</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for f in flags %}
-    <tr>
-      <td>{{ severity_names[f.severity] }} ({{ f.severity_score }})</td>
-      <td>{{ rule_names.get(f.type, f.type) }}<br><small>{{ method_names.get(f.method, f.method) }}</small></td>
-      <td>{{ f.occurred_at }}</td>
-      <td>
-        {% if f.type == 'duplicate' %}{{ refs.get(f.txn_ids[0]) }} → {{ refs.get(f.txn_ids[1]) }}
-        {% elif f.type == 'spike' %}{{ f.txn_ids|length }} payments
-        {% else %}{{ refs.get(f.txn_ids[0]) }}{% endif %}
-      </td>
-      <td>{{ f.counterparty or f.merchant or '—' }}</td>
-      <td>{{ f.category }}</td>
-      <td class="num">{{ f.amount | money }}</td>
-      <td>{{ f.reason }}</td>
-      <td>{{ status_names[f.status] }}</td>
-      <td>
-        <form method="post" action="{{ url_for('update_status', flag_id=f.flag_key) }}">
-          {% if f.status != 'confirmed' %}<button name="status" value="confirmed">Confirm issue</button>{% endif %}
-          {% if f.status != 'dismissed' %}<button name="status" value="dismissed">Mark OK</button>{% endif %}
-          {% if f.status != 'new' %}<button name="status" value="new">Reopen</button>{% endif %}
-        </form>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="10">No flags match these filters.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% set open = by_status.get('new', 0) %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p>
+      {% if overview %}{{ "{:,}".format(overview.payments) }} payments from {{ short_date(overview.first_date) }} to {{ short_date(overview.last_date) }}{% else %}No transactions yet{% endif %}
+      {% if last_run %} · checked {{ last_run.ran_at|when }}{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    {% if can('owner') and overview %}
+    <form method="post" action="{{ url_for('run') }}"><button class="btn" type="submit">{{ ui.icon('refresh') }} Check again</button></form>
+    {% endif %}
+    {% if open %}<a class="btn btn-primary" href="{{ url_for('review') }}">{{ ui.icon('review') }} Review {{ open }} flag{{ 's' if open != 1 }}</a>{% endif %}
+  </div>
 </div>
+
+{% if not overview %}
+<div class="card">
+  {{ ui.empty("Upload a CSV of your payments and Treasury Guard will check every one of them.",
+              url_for('upload_page') if can('owner') else None, "Upload transactions", "upload") }}
+</div>
+{% else %}
+
+<div class="grid grid-4">
+  <div class="card kpi">
+    <div class="label">Total spent</div>
+    <div class="value">{{ overview.total_spent|money }}</div>
+    <div class="sub">across {{ "{:,}".format(overview.payments) }} payments</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Last 30 days</div>
+    <div class="value">{{ overview.last30|money }}</div>
+    <div class="sub">
+      {% if overview.change_pct is none %}Not enough history yet to compare
+      {% elif overview.change_pct > 0 %}<span class="up">Up {{ overview.change_pct }}%</span> on the 30 days before
+      {% elif overview.change_pct < 0 %}<span class="down">Down {{ -overview.change_pct }}%</span> on the 30 days before
+      {% else %}Same as the 30 days before{% endif %}
+    </div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Waiting for review</div>
+    <div class="value">{{ open }} flag{{ 's' if open != 1 }}</div>
+    <div class="sub">{{ overview.waiting_amount|money }} across {{ overview.waiting_payments }} payments</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Confirmed issues</div>
+    <div class="value">{{ by_status.get('confirmed', 0) }}</div>
+    <div class="sub">{{ by_status.get('dismissed', 0) }} marked OK · {{ ((total - open) / total * 100)|round|int if total else 0 }}% reviewed</div>
+  </div>
+</div>
+
+<div class="grid grid-main section">
+  <section class="card" aria-labelledby="trend-h">
+    <div class="card-head">
+      <div><h2 id="trend-h">Spending trend</h2><p>Payments per {{ trend.unit }}. The orange part is money in flagged payments.</p></div>
+      <div class="legend"><span><i style="background:var(--chart-spent)"></i>Spent</span><span><i style="background:var(--chart-flagged)"></i>Flagged</span></div>
+    </div>
+    {{ ui.trend_chart(trend) }}
+  </section>
+
+  <section class="card" aria-labelledby="todo-h">
+    <div class="card-head"><h2 id="todo-h">Needs your attention</h2><a href="{{ url_for('flags_page', status='new') }}">See all</a></div>
+    {% if to_review %}
+    <ul class="list">
+      {% for f in to_review %}
+      <li>
+        <div class="grow">
+          <a class="title" href="{{ url_for('flag_page', flag_key=f.flag_key) }}">{{ headline(f) }}</a>
+          <span class="meta">{{ rule_names[f.type] }} · {{ short_date(f.occurred_at) }}</span>
+        </div>
+        {{ ui.sev(f.severity) }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {{ ui.empty("Nothing waiting. Every flag has been reviewed.", icon_name="check") }}
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid grid-2 section">
+  <section class="card" aria-labelledby="cat-h">
+    <div class="card-head"><div><h2 id="cat-h">Where the money went</h2><p>Spending by category</p></div></div>
+    {% set top_share = categories[0].share if categories else 1 %}
+    {% for c in categories %}
+    <div class="hbar">
+      <span class="name" title="{{ c.name }}">{{ c.name }}</span>
+      <span class="track" aria-hidden="true"><span class="fill" style="display:block;width:{{ (c.share / top_share * 100)|round(1) }}%"></span></span>
+      <span class="num">{{ c.spent|money }} <small>· {{ c.share }}%</small></span>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="card" aria-labelledby="sev-h">
+    <div class="card-head"><div><h2 id="sev-h">Flags by severity</h2><p>{{ total }} flags in total</p></div></div>
+    {% if total %}
+    <div class="meter" role="img" aria-label="High {{ by_severity.get('high', 0) }}, Medium {{ by_severity.get('medium', 0) }}, Low {{ by_severity.get('low', 0) }}">
+      {% for level in ('high', 'medium', 'low') %}<span class="sev-{{ level }}" style="width:{{ by_severity.get(level, 0) / total * 100 }}%;background:currentColor"></span>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="actions" style="margin-bottom:16px">
+      {% for level in ('high', 'medium', 'low') %}
+      <a href="{{ url_for('flags_page', severity=level) }}" style="text-decoration:none;color:var(--text)">{{ ui.sev(level) }} <span class="num">{{ by_severity.get(level, 0) }}</span></a>
+      {% endfor %}
+    </div>
+    <h3 style="margin-bottom:8px">Latest alerts</h3>
+    {% if recent_alerts %}
+    <ul class="list">
+      {% for a in recent_alerts[:3] %}
+      <li><div class="grow"><a class="title" href="{{ url_for('flag_page', flag_key=a.flag_key) }}">{{ a.title }}</a>
+        <span class="meta">{{ a.created_at|when }}</span></div>{{ ui.sev(a.severity) }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">No alerts yet.</p>{% endif %}
+  </section>
+</div>
+{% endif %}
+
+<section class="card section" aria-labelledby="checks-h">
+  <div class="card-head">
+    <div><h2 id="checks-h">What Treasury Guard checks</h2><p>Every payment goes through these eight checks each time you upload or change a setting.</p></div>
+    <a href="{{ url_for('rules') }}">Change settings</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Check</th><th>Flags when</th><th class="num">Flags</th></tr></thead>
+      <tbody>
+        {% for key, setting in checks %}
+        <tr>
+          <td><a class="row-link" href="{{ url_for('flags_page', type=key) }}">{{ rule_names[key] }}</a></td>
+          <td class="muted">{{ setting }}</td>
+          <td class="num">{{ counts.get(key, 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}

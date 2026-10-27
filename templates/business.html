@@ -1,35 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Business profile{% endblock %}
 {% block content %}
-<h2>Business profile</h2>
-{% if message %}<p role="status">{{ message }}</p>{% endif %}
-{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
-<p>Signed in as {{ user.full_name }} ({{ user.email }}), owner.</p>
+<div class="page-head"><div><h1>Business profile</h1><p>Signed in as {{ current_user.full_name }} ({{ current_user.email }}), {{ role_names[business.role]|lower }}.</p></div></div>
+{% if message %}<div class="notice" role="status"><p>{{ message }}</p></div>{% endif %}
+{% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
+{% set locked = not can('owner') %}
 
-<form method="post">
-  <input type="hidden" name="action" value="profile">
-  <p><label for="name">Business name</label><br>
-    <input id="name" name="name" type="text" required value="{{ business.name }}"></p>
-  <p><label for="business_type">Business type</label><br>
-    <select id="business_type" name="business_type">
-      {% for t in business_types %}<option value="{{ t }}" {% if business.business_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
-    </select></p>
-  <p><label for="currency">Currency</label><br>
-    <select id="currency" name="currency">
-      {% for c in currencies %}<option value="{{ c }}" {% if business.currency == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
-    </select></p>
-  <p><label for="address">Address</label><br>
-    <input id="address" name="address" type="text" value="{{ business.address }}"></p>
-  <p><button type="submit">Save profile</button></p>
-</form>
+<div class="grid grid-2">
+  <section class="card" aria-labelledby="profile-h">
+    <h2 id="profile-h" style="margin-bottom:12px">Details</h2>
+    <form method="post">
+      <input type="hidden" name="action" value="profile">
+      <div class="field"><label for="name">Business name</label>
+        <input id="name" name="name" type="text" required value="{{ business.name }}" {% if locked %}disabled{% endif %}></div>
+      <div class="form-grid">
+        <div class="field"><label for="business_type">Business type</label>
+          <select id="business_type" name="business_type" {% if locked %}disabled{% endif %}>
+            {% for t in business_types %}<option value="{{ t }}" {% if business.business_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+          </select></div>
+        <div class="field"><label for="currency">Currency</label>
+          <select id="currency" name="currency" {% if locked %}disabled{% endif %}>
+            {% for c in currencies %}<option value="{{ c }}" {% if business.currency == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          </select></div>
+      </div>
+      <div class="field"><label for="address">Address</label>
+        <input id="address" name="address" type="text" value="{{ business.address }}" {% if locked %}disabled{% endif %}></div>
+      {% if not locked %}<button class="btn btn-primary" type="submit">Save profile</button>{% endif %}
+    </form>
+  </section>
 
-<h3>Spending categories</h3>
-<p>{{ categories | join(', ') }}</p>
-<form method="post">
-  <input type="hidden" name="action" value="add_category">
-  <label for="category">New category</label>
-  <input id="category" name="category" type="text" maxlength="60" required>
-  <button type="submit">Add</button>
-</form>
-<p>Categories in your uploads are added automatically.</p>
+  <section class="card" aria-labelledby="cat-h">
+    <h2 id="cat-h" style="margin-bottom:8px">Spending categories</h2>
+    <p class="muted">Categories found in your uploads are added for you.</p>
+    <p class="actions">{% for c in categories %}<span class="badge plain sev-low">{{ c }}</span>{% endfor %}</p>
+    {% if not locked %}
+    <form method="post" class="filters" style="margin:0">
+      <input type="hidden" name="action" value="add_category">
+      <div class="field"><label for="category">New category</label><input id="category" name="category" type="text" maxlength="60" required></div>
+      <button class="btn" type="submit">Add</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

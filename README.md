@@ -39,6 +39,20 @@ Flags are stored per business with a plain-language reason and a review status (
   Changing any of these by hand switches to "custom". Large/small payment limits are set from the business's own data (top and bottom 1% of payments) until the owner sets them.
 - **Severity score (0–100)** for every flag: a base score from how far past its threshold it is, plus 10 for each other check that flagged the same payment. 75+ is High, 50–74 Medium, below 50 Low.
 
+### Increment 4 — Dashboard, alerts and review workflow
+Owners can now view, review and resolve flagged transactions.
+- **Overview dashboard:** total spent, last 30 days compared with the 30 before (once there's enough history), money waiting for review, confirmed issues, a spending-trend chart (per day, week or month depending on the data, with the flagged part in orange), spending by category, the five most urgent flags and the latest alerts.
+- **Plain-language explanations:** every flag page leads with one sentence ("₱70.54 to account 1299 may have been paid twice"), then why it was flagged, what the check looks for, how serious it is, the numbers behind it and what to check next. Wording lives in `treasury_guard/labels.py`.
+- **Review workflow:** mark each flag Confirmed issue, Marked OK or Needs review, with an optional note; "Review one by one" walks through open flags from most to least severe ("Save and go to next"); tick several flags to mark them at once. Who reviewed and when is recorded.
+- **Alerts:** new flags from each upload or re-check become in-app alerts (unread count in the menu; opening a flag marks its alert read). Owners choose the minimum severity, and can turn on one email per check-up for the most serious ones.
+- **Email:** without SMTP settings nothing is sent; emails are saved as `.eml` files in `instance/outbox/` (development mode). To send for real, set `TREASURY_GUARD_SMTP_HOST`, `TREASURY_GUARD_SMTP_PORT` (default 587), `TREASURY_GUARD_SMTP_USER`, `TREASURY_GUARD_SMTP_PASSWORD` and `TREASURY_GUARD_MAIL_FROM`.
+
+### Modules that were placeholders before
+- **Combined risk score:** one 0–100 score per payment. Each kind of check (rules, statistics, AI) gives its strongest score; the risk is the highest of those, +15 if two kinds agree, +25 if all three do. Flags marked OK don't count.
+- **Reports:** a summary for any date range (print or save as PDF from the browser) and CSV downloads of flags and transactions (cells are protected against spreadsheet formula injection).
+- **Activity log:** sign-ups, logins, uploads, setting changes, reviews and team changes, with who did them.
+- **Team & roles:** the owner can add reviewers (can review flags) and viewers (read-only). Only the owner can upload, change settings or manage the team.
+
 ### AI models (trained on a labelled Kaggle fraud dataset)
 - **Training data:** [Credit Card Transactions Fraud Detection Dataset](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (Sparkov simulation), 1.30M training rows (Jan 2019 – Jun 2020) and 556k test rows (Jun – Dec 2020), about 0.5% fraud. Each card is treated as one business and its merchants as payees; amounts converted USD → PHP at 62.879. Personal columns (name, address, birth date, job, location) are dropped.
 - **Fraud model:** scikit-learn `HistGradientBoostingClassifier` trained on the `is_fraud` labels. Flags "Possible fraud (AI model)" with a fraud-risk percentage and plain-language reasons.
@@ -72,7 +86,7 @@ python app.py
 
 Open http://127.0.0.1:5000, create an account at `/signup` (tick "Load sample transactions" for demo data), or log out at `/logout`.
 
-Pages (plain, unstyled for now): Anomaly flags (dashboard), Transactions, Upload CSV (with column matching and a "Load sample data" button), Detection settings (sensitivity presets, rule, statistical and AI settings), AI models (training data and test results), Business profile (details and categories), Log out.
+Pages: Overview, Flagged payments (with the flag and review pages), Combined risk, Alerts, Transactions, Reports, Upload CSV, Detection settings, AI models, Business profile, Team & roles, Activity log. They work on phones and follow the system's light or dark mode.
 
 The JSON API below exposes the same features for a future frontend.
 
@@ -82,11 +96,13 @@ The JSON API below exposes the same features for a future frontend.
 python -m unittest
 ```
 
+51 tests, including `tests/test_increment4.py` for the dashboard, alerts, explanations, review workflow, risk score, reports and roles.
+
 ## JSON API
 
 All routes are under `/api` and use a session cookie (log in or register first).
 **Every POST, PUT and PATCH must send the header `X-Requested-With: TreasuryGuard`** (blocks cross-site requests).
-Errors return `{"error": "message"}` with a 4xx status.
+Errors return `{"error": "message"}` with a 4xx status. Changes need the right role: viewers can only read, reviewers can also review flags and mark alerts read, owners can do everything (403 otherwise).
 
 | Method & route | What it does |
 |---|---|
@@ -108,7 +124,14 @@ Errors return `{"error": "message"}` with a 4xx status.
 | `POST /api/detection/run` | Re-run detection |
 | `GET /api/flags` | Query: `type`, `status`, `severity`, `min_score`, `sort` (severity/date). Most severe first by default |
 | `GET /api/flags/<flag_key>` | One flag |
-| `PATCH /api/flags/<flag_key>` | `{status: new|confirmed|dismissed}` |
+| `PATCH /api/flags/<flag_key>` | `{status: new|confirmed|dismissed, note?}` (reviewer or owner) |
+| `GET /api/flags/<flag_key>/explanation` | Plain-language headline, what it means, what to check, the numbers |
+| `GET /api/dashboard` | Overview numbers, spending trend, categories, flag counts, unread alerts |
+| `GET /api/alerts` / `POST /api/alerts/read` | Alerts (`?unread=1`); mark `{ids: [..]}` or all as read |
+| `GET /api/alerts/settings` / `PUT /api/alerts/settings` | `in_app_min_severity`, `email_enabled`, `email_to`, `email_min_severity` (owner) |
+| `GET /api/risk` | Combined risk per flagged payment (`?level=high|medium|low`) |
+| `GET /api/activity` | Activity log |
+| `GET /api/team` | Team members and your role |
 | `GET /api/summary` | Counts by check, severity, status and method; last run |
 
 CSV fields for mapping: `date` and `amount` (required); `reference`, `counterparty` (who was paid / account charged), `merchant`, `category`, `description`, `direction` (payment/expense vs income/deposit) are optional. Without a `direction` column every row is treated as a payment.
@@ -129,12 +152,19 @@ treasury_guard/
   training.py                trains both AI models (run once; needs requirements-train.txt)
   anomaly_model.py           loads the AI models, scores a business's payments, writes reasons
   settings.py                per-business thresholds and sensitivity presets
-  detection.py               runs all checks for a business and saves the flags
-  flags.py                   flag storage and review status
-  labels.py                  every name shown to owners (edit wording here)
+  detection.py               runs all checks for a business, saves the flags, raises alerts
+  flags.py                   flag storage, review status and notes, review queue
+  labels.py                  every name and explanation shown to owners (edit wording here)
+  insights.py                dashboard numbers: summary, spending trend, categories
+  alerts.py                  in-app alerts and the email digest
+  mailer.py                  sends email over SMTP, or saves it to instance/outbox in development
+  risk.py                    combined risk score per payment
+  reports.py                 report summary and CSV exports
+  activity.py                activity log (audit trail)
   demo_data.py               loads the Kaggle sample data
   api.py                     JSON API
-templates/, static/          placeholder pages
+templates/                   pages (_ui.html holds shared pieces: icons, badges, the trend chart)
+static/style.css             the design system: colours, type, layout, light and dark mode
 models/                      trained model and model card
 docs/                        CSV format guide and template
 data/                        Kaggle sample data for the demo account

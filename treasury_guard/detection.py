@@ -1,5 +1,6 @@
-"""Runs every check for one business and stores the results."""
+"""Runs every check for one business, stores the results and raises alerts for new flags."""
 from . import flags as flag_store
+from .alerts import create_for_new_flags
 from .anomaly_model import run_ai_checks
 from .labels import money_formatter
 from .rules import run_rule_checks
@@ -23,4 +24,6 @@ def run_detection(conn, business_id):
     transactions = load_outflows_for_detection(conn, business_id)
     settings = fill_limits_from_data(conn, business_id, [t["amount"] for t in transactions])
     found = find_anomalies(transactions, settings, business["currency"] if business else "PHP")
-    return flag_store.save_detection_results(conn, business_id, found, len(transactions), settings)
+    result = flag_store.save_detection_results(conn, business_id, found, len(transactions), settings)
+    result["alerts"] = create_for_new_flags(conn, business_id, result.pop("new_flags"))
+    return result

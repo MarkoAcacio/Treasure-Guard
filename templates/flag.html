@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}{{ headline }}{% endblock %}
+{% block content %}
+<a class="crumb" href="{{ url_for('flags_page') }}">{{ ui.icon('left') }} Flagged payments</a>
+<div class="page-head">
+  <div>
+    <div class="actions" style="margin-bottom:8px">{{ ui.sev(f.severity, f.severity_score) }} {{ ui.status(f.status) }}
+      {% if in_queue %}<span class="muted">· {{ left }} still need review</span>{% endif %}</div>
+    <h1>{{ headline }}</h1>
+    <p>{{ rule_names.get(f.type, f.type) }} · {{ method_names.get(f.method, f.method) }} · {{ f.occurred_at|when }}</p>
+  </div>
+</div>
+
+<div class="grid grid-main">
+  <div class="stack">
+    <section class="card" aria-labelledby="why-h">
+      <h2 id="why-h" style="margin-bottom:10px">Why it was flagged</h2>
+      <p class="quote lead">{{ f.reason }}</p>
+      <h3>What this check looks for</h3>
+      <p class="muted">{{ description }}</p>
+      <h3>How serious is it?</h3>
+      <p class="muted" style="margin:0">{{ severity_names[f.severity] }}: {{ severity_help[f.severity] }}</p>
+    </section>
+
+    <section class="card" aria-labelledby="facts-h">
+      <h2 id="facts-h" style="margin-bottom:12px">The numbers behind it</h2>
+      <dl class="facts">{% for label, value in facts %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+    </section>
+
+    <section class="card" aria-labelledby="txn-h">
+      <h2 id="txn-h" style="margin-bottom:8px">{{ 'Payment' if txns|length == 1 else txns|length ~ ' payments' }} involved</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Reference</th><th>Payee</th><th>Category</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            {% for t in txns %}
+            <tr>
+              <td class="num">{{ t.occurred_at[:16] }}</td>
+              <td>{{ t.reference or '#' ~ t.id }}</td>
+              <td>{{ t.counterparty or t.merchant or '—' }}{% if t.counterparty and t.merchant %}<span class="cell-sub">{{ t.merchant }}</span>{% endif %}</td>
+              <td>{{ t.category }}</td>
+              <td class="num">{{ t.amount|money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {% if related %}
+    <section class="card" aria-labelledby="rel-h">
+      <h2 id="rel-h" style="margin-bottom:4px">Other checks flagged this too</h2>
+      <p class="muted">When different checks agree, it's more likely something is wrong.</p>
+      <ul class="list">
+        {% for x in related %}
+        <li><div class="grow"><a class="title" href="{{ url_for('flag_page', flag_key=x.flag_key) }}">{{ rule_names.get(x.type, x.type) }}</a>
+          <span class="meta">{{ related_headline(x) }}</span></div>{{ ui.status(x.status) }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <section class="card" aria-labelledby="review-h">
+      <h2 id="review-h" style="margin-bottom:10px">Your review</h2>
+      {% if can('reviewer') %}
+      <form method="post" action="{{ url_for('update_status', flag_key=f.flag_key) }}">
+        <fieldset class="choice" style="border:0;padding:0;margin:0 0 14px">
+          <legend class="sr-only">Decision</legend>
+          {% for key in ('confirmed', 'dismissed', 'new') %}
+          <label><input type="radio" name="status" value="{{ key }}" {% if f.status == key %}checked{% endif %}>
+            <span>{{ status_names[key] }}<span class="hint">{{ status_help[key] }}</span></span></label>
+          {% endfor %}
+        </fieldset>
+        <div class="field"><label for="note">Note <span class="hint">(optional)</span></label>
+          <textarea id="note" name="note" maxlength="1000" placeholder="e.g. Called the supplier, they refunded the second charge.">{{ f.review_note }}</textarea></div>
+        <div class="actions">
+          <button class="btn btn-primary" type="submit" name="then" value="next">Save and go to next {{ ui.icon('right') }}</button>
+          <button class="btn" type="submit" name="then" value="stay">Save</button>
+        </div>
+      </form>
+      {% else %}
+      <p>{{ ui.status(f.status) }}</p>
+      {% if f.review_note %}<p class="quote">{{ f.review_note }}</p>{% endif %}
+      <p class="muted">You can view flags. Ask the owner for reviewer access to mark them.</p>
+      {% endif %}
+      {% if f.reviewed_at %}
+      <p class="muted" style="margin:12px 0 0;font-size:.86rem">Last updated {{ f.reviewed_at|when }}{% if reviewer %} by {{ reviewer.full_name }}{% endif %}.</p>
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="todo-h">
+      <h2 id="todo-h" style="margin-bottom:10px">What to check</h2>
+      <ol class="steps">{% for step in next_steps %}<li>{{ step }}</li>{% endfor %}</ol>
+    </section>
+  </div>
+</div>
+{% endblock %}

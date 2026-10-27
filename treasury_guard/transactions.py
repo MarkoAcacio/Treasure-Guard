@@ -101,5 +101,15 @@ def references_for(conn, business_id, ids):
     return out
 
 
+def by_ids(conn, business_id, ids):
+    """Full transaction rows for these IDs, oldest first."""
+    ids = list(ids)[:500]
+    if not ids:
+        return []
+    rows = conn.execute(f"SELECT * FROM transactions WHERE business_id = ? AND id IN ({','.join('?' * len(ids))}) "
+                        "ORDER BY occurred_at, id", (business_id, *ids))
+    return [_row_to_dict(r) for r in rows]
+
+
 def count_transactions(conn, business_id):
     return conn.execute("SELECT COUNT(*) FROM transactions WHERE business_id = ?", (business_id,)).fetchone()[0]

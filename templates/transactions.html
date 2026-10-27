@@ -1,53 +1,60 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Transactions{% endblock %}
 {% block content %}
-<h2>Transactions</h2>
-<form method="get" action="{{ url_for('transactions_page') }}">
-  <label for="category">Category</label>
-  <select id="category" name="category">
-    <option value="">All</option>
-    {% for c in categories %}<option value="{{ c }}" {% if args.get('category') == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
-  </select>
-  <label for="direction">Type</label>
-  <select id="direction" name="direction">
-    <option value="">All</option>
-    <option value="out" {% if args.get('direction') == 'out' %}selected{% endif %}>Payments</option>
-    <option value="in" {% if args.get('direction') == 'in' %}selected{% endif %}>Income</option>
-  </select>
-  <label for="from">From</label> <input id="from" name="from" type="date" value="{{ args.get('from', '') }}">
-  <label for="to">To</label> <input id="to" name="to" type="date" value="{{ args.get('to', '') }}">
-  <label><input type="checkbox" name="flagged" value="1" {% if args.get('flagged') == '1' %}checked{% endif %}> Flagged only</label>
-  <button type="submit">Filter</button>
-</form>
-<p>{{ result.total }} transactions · page {{ result.page }} of {{ pages }}</p>
-
-<div class="scroll">
-<table>
-  <thead>
-    <tr><th>Date</th><th>Reference</th><th>Type</th><th>Payee</th><th>Merchant</th><th>Category</th>
-        <th>Amount</th><th>Description</th><th>Flags</th></tr>
-  </thead>
-  <tbody>
-    {% for t in result.transactions %}
-    <tr>
-      <td>{{ t.occurred_at }}</td>
-      <td>{{ t.reference or '—' }}</td>
-      <td>{{ 'Payment' if t.direction == 'out' else 'Income' }}</td>
-      <td>{{ t.counterparty or '—' }}</td>
-      <td>{{ t.merchant or '—' }}</td>
-      <td>{{ t.category }}</td>
-      <td class="num">{{ t.amount | money }}</td>
-      <td>{{ t.description or '' }}</td>
-      <td>{% if t.flag_count %}{{ t.flag_count }} ({{ level_for(t.severity_score) }}){% else %}—{% endif %}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="9">No transactions. <a href="{{ url_for('upload_page') }}">Upload a CSV</a>.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="page-head">
+  <div><h1>Transactions</h1><p>Everything you've uploaded. Flagged payments show their combined risk score.</p></div>
+  {% if can('owner') %}<a class="btn" href="{{ url_for('upload_page') }}">{{ ui.icon('upload') }} Upload CSV</a>{% endif %}
 </div>
-<p>
-  {% if result.page > 1 %}<a href="{{ url_for('transactions_page', page=result.page - 1, **args) }}">Previous</a>{% endif %}
-  {% if result.page < pages %}<a href="{{ url_for('transactions_page', page=result.page + 1, **args) }}">Next</a>{% endif %}
-</p>
+
+<div class="card">
+  <form class="filters" method="get" action="{{ url_for('transactions_page') }}">
+    <div class="field"><label for="category">Category</label>
+      <select id="category" name="category"><option value="">All</option>
+        {% for c in categories %}<option value="{{ c }}" {% if args.get('category') == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="direction">Type</label>
+      <select id="direction" name="direction">
+        <option value="">All</option>
+        <option value="out" {% if args.get('direction') == 'out' %}selected{% endif %}>Payments</option>
+        <option value="in" {% if args.get('direction') == 'in' %}selected{% endif %}>Income</option>
+      </select></div>
+    <div class="field"><label for="from">From</label><input id="from" name="from" type="date" value="{{ args.get('from', '') }}"></div>
+    <div class="field"><label for="to">To</label><input id="to" name="to" type="date" value="{{ args.get('to', '') }}"></div>
+    <label class="check"><input type="checkbox" name="flagged" value="1" {% if args.get('flagged') == '1' %}checked{% endif %}> Flagged only</label>
+    <button class="btn" type="submit">Apply</button>
+  </form>
+  <p class="muted">{{ "{:,}".format(result.total) }} transactions · page {{ result.page }} of {{ pages }}</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Reference</th><th class="num">Amount</th><th>Risk</th></tr></thead>
+      <tbody>
+        {% for t in result.transactions %}
+        {% set r = risk.get(t.id) %}
+        <tr>
+          <td class="num">{{ t.occurred_at[:16] }}</td>
+          <td>{{ t.counterparty or t.merchant or '—' }}
+            {% if t.description %}<span class="cell-sub">{{ t.description }}</span>{% endif %}</td>
+          <td>{{ t.category }}</td>
+          <td class="muted">{{ t.reference or '—' }}</td>
+          <td class="num">{% if t.direction == 'in' %}<span class="down">+{{ t.amount|money }}</span>{% else %}{{ t.amount|money }}{% endif %}</td>
+          <td>{% if r %}<a href="{{ url_for('flag_page', flag_key=(r.flags|sort(attribute='severity_score', reverse=true)|first).flag_key) }}"
+                 style="text-decoration:none" title="{{ r.flags|length }} flag{{ 's' if r.flags|length != 1 }}"><span class="score sev-{{ r.level }}">{{ r.score }}</span></a>
+              {% elif t.flag_count %}<span class="muted">Marked OK</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">{{ ui.empty("No transactions match.", url_for('upload_page') if can('owner') else None, "Upload a CSV") }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <span class="muted">Page {{ result.page }} of {{ pages }}</span>
+    <span class="actions">
+      {% if result.page > 1 %}<a class="btn btn-sm" href="{{ url_for('transactions_page', page=result.page - 1, **args) }}">{{ ui.icon('left') }} Previous</a>{% endif %}
+      {% if result.page < pages %}<a class="btn btn-sm" href="{{ url_for('transactions_page', page=result.page + 1, **args) }}">Next {{ ui.icon('right') }}</a>{% endif %}
+    </span>
+  </div>
+</div>
 {% endblock %}

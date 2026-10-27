@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Activity log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Activity log</h1><p>Who did what: uploads, setting changes, reviews and team changes.</p></div>
+</div>
+<section class="card">
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+      <tbody>
+        {% for a in rows %}
+        <tr><td class="num muted">{{ a.at|when }}</td><td>{{ a.who }}</td>
+          <td>{{ a.action }}{% if a.detail %}<span class="cell-sub">{{ a.detail }}</span>{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <span class="muted">Page {{ page }} of {{ pages }}</span>
+    <span class="actions">
+      {% if page > 1 %}<a class="btn btn-sm" href="{{ url_for('activity_page', page=page - 1) }}">{{ ui.icon('left') }} Newer</a>{% endif %}
+      {% if page < pages %}<a class="btn btn-sm" href="{{ url_for('activity_page', page=page + 1) }}">Older {{ ui.icon('right') }}</a>{% endif %}
+    </span>
+  </div>
+  {% else %}
+  {{ ui.empty("Nothing logged yet.", icon_name="history") }}
+  {% endif %}
+</section>
+{% endblock %}

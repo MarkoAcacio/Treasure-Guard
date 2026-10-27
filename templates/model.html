@@ -1,46 +1,60 @@
 {% extends "base.html" %}
 {% block title %}AI models{% endblock %}
 {% block content %}
-<h2>AI models</h2>
-<p>Status: <strong>{{ status }}</strong></p>
+<div class="page-head">
+  <div><h1>AI models</h1><p>What the two models learned from, and how well they did on data they had never seen.</p></div>
+  <span class="badge {{ 'st-dismissed' if status == 'ready' else 'st-confirmed' }}">{{ 'Ready' if status == 'ready' else 'Not available' }}</span>
+</div>
+{% if status != 'ready' %}<div class="notice error" role="alert"><p>{{ status }}</p></div>{% endif %}
 {% if card %}
-<p>Trained {{ card.trained_at.replace('T', ' ') }} with scikit-learn {{ card.sklearn_version }}.</p>
+<div class="stack">
+  <section class="card">
+    <h2 style="margin-bottom:8px">Training data</h2>
+    <p><a href="{{ card.training_data.dataset }}">{{ card.training_data.dataset }}</a></p>
+    <p class="muted">{{ card.training_data.description }}</p>
+    <p class="muted">Training: {{ card.training_data.train_file }} · Testing: {{ card.training_data.test_file }} · {{ card.training_data.currency }}</p>
+    <p class="muted" style="margin:0">Trained {{ card.trained_at|when }} with scikit-learn {{ card.sklearn_version }}.</p>
+  </section>
 
-<h3>Training data</h3>
-<p><a href="{{ card.training_data.dataset }}">{{ card.training_data.dataset }}</a><br>
-  {{ card.training_data.description }}<br>
-  Training: {{ card.training_data.train_file }} · Testing: {{ card.training_data.test_file }}<br>
-  {{ card.training_data.currency }}</p>
-<table>
-  <tr><th>Column used</th><th>Why</th></tr>
-  {% for col, why in card.training_data.columns_used.items() %}<tr><td>{{ col }}</td><td>{{ why }}</td></tr>{% endfor %}
-</table>
-<table>
-  <tr><th>Columns dropped</th><th>Why</th></tr>
-  {% for col, why in card.training_data.columns_dropped.items() %}<tr><td>{{ col }}</td><td>{{ why }}</td></tr>{% endfor %}
-</table>
+  <section class="card">
+    <h2 style="margin-bottom:8px">Test results (on later, unseen data)</h2>
+    <p class="muted">Precision: of the payments flagged, how many were really fraud. Recall: of the real fraud, how much was flagged.</p>
+    {% for variant, e in card.evaluation.items() %}
+    <h3 style="margin:14px 0 6px">{{ 'Uploads with time of day' if variant == 'with_time' else 'Uploads with dates only' }}
+      <small>· {{ "{:,}".format(e.test_rows) }} payments, {{ "{:,}".format(e.test_fraud) }} fraud</small></h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Model</th><th class="num">ROC-AUC</th><th class="num">PR-AUC</th><th class="num">Precision</th><th class="num">Recall</th><th class="num">Flagged</th></tr></thead>
+      <tbody>
+        <tr><td>Fraud model (gradient boosting)</td><td class="num">{{ e.fraud_classifier.roc_auc }}</td><td class="num">{{ e.fraud_classifier.pr_auc }}</td>
+            <td class="num">{{ e.fraud_classifier.at_threshold.precision }}</td><td class="num">{{ e.fraud_classifier.at_threshold.recall }}</td>
+            <td class="num">{{ e.fraud_classifier.at_threshold.flagged }}</td></tr>
+        {% set iso = e.isolation_forest %}
+        {% set iso_at = iso['at_97th_percentile_per_business'] %}
+        <tr><td>Unusual-pattern model (Isolation Forest, 97th percentile)</td><td class="num">{{ iso.roc_auc }}</td><td class="num">{{ iso.pr_auc }}</td>
+            <td class="num">{{ iso_at.precision }}</td><td class="num">{{ iso_at.recall }}</td><td class="num">{{ iso_at.flagged }}</td></tr>
+        {% set rule = e.baseline_rule_amount_top_1pct_per_business %}
+        <tr><td>Simple rule: top 1% amount (for comparison)</td><td class="num">—</td><td class="num">—</td>
+            <td class="num">{{ rule.precision }}</td><td class="num">{{ rule.recall }}</td><td class="num">{{ rule.flagged }}</td></tr>
+      </tbody>
+    </table></div>
+    {% endfor %}
+  </section>
 
-<h3>Test results (on later, unseen data)</h3>
-{% for variant, e in card.evaluation.items() %}
-<h4>{{ 'Uploads with time of day' if variant == 'with_time' else 'Uploads with dates only' }}
-  — {{ e.test_rows }} payments, {{ e.test_fraud }} fraud</h4>
-<table>
-  <tr><th>Model</th><th>ROC-AUC</th><th>PR-AUC</th><th>Precision</th><th>Recall</th><th>Flagged</th></tr>
-  <tr><td>Fraud model (gradient boosting)</td><td>{{ e.fraud_classifier.roc_auc }}</td><td>{{ e.fraud_classifier.pr_auc }}</td>
-      <td>{{ e.fraud_classifier.at_threshold.precision }}</td><td>{{ e.fraud_classifier.at_threshold.recall }}</td>
-      <td>{{ e.fraud_classifier.at_threshold.flagged }}</td></tr>
-  {% set iso = e.isolation_forest %}
-  {% set iso_at = iso['at_97th_percentile_per_business'] %}
-  <tr><td>Unusual-pattern model (Isolation Forest, 97th percentile)</td><td>{{ iso.roc_auc }}</td><td>{{ iso.pr_auc }}</td>
-      <td>{{ iso_at.precision }}</td><td>{{ iso_at.recall }}</td><td>{{ iso_at.flagged }}</td></tr>
-  {% set rule = e.baseline_rule_amount_top_1pct_per_business %}
-  <tr><td>Simple rule: top 1% amount (for comparison)</td><td>—</td><td>—</td>
-      <td>{{ rule.precision }}</td><td>{{ rule.recall }}</td><td>{{ rule.flagged }}</td></tr>
-</table>
-{% endfor %}
-<p>Precision: share of flags that were real fraud. Recall: share of fraud that was flagged.</p>
+  <div class="grid grid-2">
+    <section class="card">
+      <h2 style="margin-bottom:8px">Columns used</h2>
+      <dl class="facts">{% for col, why in card.training_data.columns_used.items() %}<dt>{{ col }}</dt><dd style="font-weight:400">{{ why }}</dd>{% endfor %}</dl>
+    </section>
+    <section class="card">
+      <h2 style="margin-bottom:8px">Columns left out</h2>
+      <dl class="facts">{% for col, why in card.training_data.columns_dropped.items() %}<dt>{{ col }}</dt><dd style="font-weight:400">{{ why }}</dd>{% endfor %}</dl>
+    </section>
+  </div>
 
-<h3>Features</h3>
-<p>{{ card.variants.with_time.features | join(', ') }}. See docs/CSV_FORMAT.md for what each means.</p>
+  <section class="card">
+    <h2 style="margin-bottom:8px">Features</h2>
+    <p class="muted" style="margin:0">{{ card.variants.with_time.features | join(', ') }}. See docs/CSV_FORMAT.md for what each one means.</p>
+  </section>
+</div>
 {% endif %}
 {% endblock %}

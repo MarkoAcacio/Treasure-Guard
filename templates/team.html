@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Team & roles{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Team & roles</h1><p>Let your bookkeeper or staff help review flags without giving them full control.</p></div>
+</div>
+{% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
+
+<div class="grid grid-main">
+  <section class="card" aria-labelledby="members-h">
+    <h2 id="members-h" style="margin-bottom:8px">People with access</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th>{% if can('owner') %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td><b>{{ m.full_name }}</b><span class="cell-sub">{{ m.email }}</span></td>
+            <td>
+              {% if can('owner') and m.role != 'owner' %}
+              <form method="post" class="actions">
+                <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ m.id }}">
+                <label class="sr-only" for="role-{{ m.id }}">Role for {{ m.full_name }}</label>
+                <select id="role-{{ m.id }}" name="role" style="width:auto">
+                  {% for r in ('reviewer', 'viewer') %}<option value="{{ r }}" {% if m.role == r %}selected{% endif %}>{{ role_names[r] }}</option>{% endfor %}
+                </select>
+                <button class="btn btn-sm" type="submit">Change</button>
+              </form>
+              {% else %}{{ role_names[m.role] }}{% endif %}
+            </td>
+            {% if can('owner') %}
+            <td>{% if m.role != 'owner' %}
+              <form method="post" onsubmit='return confirm("Remove " + {{ m.full_name|tojson }} + "? They won’t be able to log in anymore.")'>
+                <input type="hidden" name="action" value="remove"><input type="hidden" name="user_id" value="{{ m.id }}">
+                <button class="btn btn-sm btn-danger" type="submit">Remove</button></form>
+            {% endif %}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="stack">
+    {% if can('owner') %}
+    <section class="card" aria-labelledby="add-h">
+      <h2 id="add-h" style="margin-bottom:12px">Add someone</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="add">
+        <div class="field"><label for="full_name">Name</label><input id="full_name" name="full_name" type="text" required value="{{ form.get('full_name', '') }}"></div>
+        <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" required value="{{ form.get('email', '') }}"></div>
+        <div class="field"><label for="password">Password for them</label>
+          <input id="password" name="password" type="text" minlength="8" required autocomplete="off">
+          <span class="hint">At least 8 characters. Share it with them privately.</span></div>
+        <div class="field"><label for="role">Role</label>
+          <select id="role" name="role">{% for r in ('reviewer', 'viewer') %}<option value="{{ r }}" {% if form.get('role') == r %}selected{% endif %}>{{ role_names[r] }}</option>{% endfor %}</select></div>
+        <button class="btn btn-primary" type="submit">Add to team</button>
+      </form>
+    </section>
+    {% endif %}
+    <section class="card" aria-labelledby="roles-h">
+      <h2 id="roles-h" style="margin-bottom:8px">What each role can do</h2>
+      <dl class="facts">{% for r, text in role_help.items() %}<dt>{{ role_names[r] }}</dt><dd style="font-weight:400">{{ text }}</dd>{% endfor %}</dl>
+    </section>
+  </div>
+</div>
+{% endblock %}

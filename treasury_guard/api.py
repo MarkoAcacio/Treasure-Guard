@@ -12,9 +12,10 @@ from pathlib import Path
 
 from flask import Blueprint, g, jsonify, request, send_file, session
 
-from . import (accounts, anomaly_model, csv_import, demo_data, detection, flags, labels, settings, severity,
-               transactions)
+from . import (accounts, activity, alerts, anomaly_model, csv_import, demo_data, detection, flags, insights, labels,
+               risk, settings, severity, transactions)
 from .accounts import AccountError
+from .alerts import AlertSettingsError
 from .csv_import import CsvImportError
 from .settings import SettingsError
 
@@ -40,6 +41,24 @@ def login_required(view):
             return error("Log in first.", 401)
         return view(*args, **kwargs)
     return wrapper
+
+
+def role_required(role):
+    """Logged in with at least this role: owner > reviewer > viewer."""
+    def decorate(view):
+        @wraps(view)
+        def wrapper(*args, **kwargs):
+            if g.business is None:
+                return error("Log in first.", 401)
+            if not accounts.can(g.business["role"], role):
+                return error(f"Only a {role} or higher can do this.", 403)
+            return view(*args, **kwargs)
+        return wrapper
+    return decorate
+
+
+def log(action, detail=""):
+    activity.log(g.db, g.business["id"], g.user_id, action, detail)
 
 
 def body():
@@ -75,6 +94,8 @@ def register():
         return error(str(e))
     session.clear()
     session["user_id"] = user_id
+    activity.log(g.db, business_id, user_id, "Created the account")
+    alerts.update_settings(g.db, business_id, {"email_to": accounts.get_user(g.db, user_id)["email"]})
     return jsonify({"user": accounts.get_user(g.db, user_id),
                     "business": accounts.get_business_for_user(g.db, user_id)}), 201
 
@@ -83,7 +104,7 @@ def register():
 def login():
     data = body()
     user = accounts.authenticate(g.db, data.get("email"), data.get("password"))
-    if not user:
+    if not user or not accounts.get_business_for_user(g.db, user["id"]):
         return error("Email or password is incorrect.", 401)
     session.clear()
     session["user_id"] = user["id"]
@@ -113,7 +134,7 @@ def get_business():
 
 
 @api.put("/business")
-@login_required
+@role_required("owner")
 def update_business():
     try:
         business = accounts.update_business(g.db, g.business["id"], body())
@@ -129,7 +150,7 @@ def list_categories():
 
 
 @api.post("/categories")
-@login_required
+@role_required("owner")
 def add_category():
     try:
         name = accounts.add_category(g.db, g.business["id"], body().get("name"))
@@ -148,7 +169,7 @@ def uploaded_file():
 
 
 @api.post("/uploads/preview")
-@login_required
+@role_required("owner")
 def preview_upload():
     filename, content = uploaded_file()
     if not filename:
@@ -160,7 +181,7 @@ def preview_upload():
 
 
 @api.post("/uploads")
-@login_required
+@role_required("owner")
 def upload():
     filename, content = uploaded_file()
     if not filename:
@@ -206,7 +227,7 @@ def list_uploads():
 
 
 @api.post("/demo/load")
-@login_required
+@role_required("owner")
 def load_demo():
     try:
         summary = demo_data.load_demo_data(g.db, g.business["id"])
@@ -253,7 +274,7 @@ def get_detection_settings():
 
 
 @api.put("/detection/settings")
-@login_required
+@role_required("owner")
 def update_detection_settings():
     try:
         new = settings.update_settings(g.db, g.business["id"], body())
@@ -264,7 +285,7 @@ def update_detection_settings():
 
 
 @api.post("/detection/run")
-@login_required
+@role_required("owner")
 def run_detection():
     return jsonify(detection_summary(detection.run_detection(g.db, g.business["id"])))
 
@@ -294,13 +315,18 @@ def get_flag(flag_key):
 
 
 @api.patch("/flags/<flag_key>")
-@login_required
+@role_required("reviewer")
 def update_flag(flag_key):
-    status = body().get("status")
+    data = body()
+    status = data.get("status")
     if status not in flags.STATUSES:
         return error(f"status must be one of: {', '.join(flags.STATUSES)}.")
-    if not flags.set_status(g.db, g.business["id"], flag_key, status):
+    note = data.get("note")
+    if note is not None and not isinstance(note, str):
+        return error("note must be text.")
+    if not flags.set_status(g.db, g.business["id"], flag_key, status, note, g.user_id):
         return error("Flag not found.", 404)
+    log("Reviewed a flag", f"{flag_key}: {labels.STATUS_NAMES[status]}")
     return jsonify(flag_for_api(flags.get_flag(g.db, g.business["id"], flag_key)))
 
 
@@ -320,3 +346,94 @@ def summary():
         "flag_type_names": labels.FLAG_TYPE_NAMES,
         "flag_type_descriptions": labels.FLAG_TYPE_DESCRIPTIONS,
     })
+
+
+# ---------- Sprint 4: dashboard, alerts, combined risk; activity log and team ----------
+
+@api.get("/dashboard")
+@login_required
+def dashboard():
+    bid = g.business["id"]
+    return jsonify({
+        "overview": insights.overview(g.db, bid),
+        "trend": insights.trend(g.db, bid),
+        "categories": insights.categories(g.db, bid),
+        "flags_by_severity": flags.count_by(g.db, bid, "severity"),
+        "flags_by_status": flags.count_by(g.db, bid, "status"),
+        "unread_alerts": alerts.unread_count(g.db, bid),
+    })
+
+
+@api.get("/flags/<flag_key>/explanation")
+@login_required
+def explain_flag(flag_key):
+    """Plain-language explanation of a flag: what was found, what it means, what to check."""
+    f = flags.get_flag(g.db, g.business["id"], flag_key)
+    if not f:
+        return error("Flag not found.", 404)
+    fmt = labels.money_formatter(g.business["currency"])
+    return jsonify({
+        "headline": labels.headline(f, fmt), "reason": f["reason"],
+        "what_it_means": labels.FLAG_TYPE_DESCRIPTIONS.get(f["type"], ""),
+        "what_to_check": labels.FLAG_NEXT_STEPS.get(f["type"], []),
+        "facts": [{"label": k, "value": v} for k, v in labels.flag_facts(f, fmt)],
+        "severity_meaning": labels.SEVERITY_HELP[f["severity"]],
+    })
+
+
+@api.get("/alerts")
+@login_required
+def list_alerts():
+    unread_only = request.args.get("unread") in ("1", "true")
+    return jsonify({"alerts": alerts.list_alerts(g.db, g.business["id"], unread_only),
+                    "unread": alerts.unread_count(g.db, g.business["id"])})
+
+
+@api.post("/alerts/read")
+@login_required
+def read_alerts():
+    """{ids: [..]} marks those alerts read; no ids marks all of them."""
+    ids = body().get("ids")
+    if ids is not None and not (isinstance(ids, list) and all(isinstance(i, int) for i in ids)):
+        return error("ids must be a list of alert IDs.")
+    alerts.mark_read(g.db, g.business["id"], ids)
+    return jsonify({"unread": alerts.unread_count(g.db, g.business["id"])})
+
+
+@api.get("/alerts/settings")
+@login_required
+def get_alert_settings():
+    return jsonify({"settings": alerts.get_settings(g.db, g.business["id"])})
+
+
+@api.put("/alerts/settings")
+@role_required("owner")
+def update_alert_settings():
+    try:
+        new = alerts.update_settings(g.db, g.business["id"], body())
+    except AlertSettingsError as e:
+        return error(str(e))
+    log("Changed alert settings")
+    return jsonify({"settings": new})
+
+
+@api.get("/risk")
+@login_required
+def combined_risk():
+    level = request.args.get("level")
+    total, rows = risk.ranked(g.db, g.business["id"], level=level if level in flags.SEVERITIES else None)
+    return jsonify({"total": total, "transactions": [
+        {"transaction": r["txn"], "score": r["score"], "level": r["level"], "method_scores": r["methods"],
+         "flags": [f["flag_key"] for f in r["flags"]]} for r in rows]})
+
+
+@api.get("/activity")
+@login_required
+def list_activity():
+    return jsonify({"activity": activity.list_activity(g.db, g.business["id"], 200)})
+
+
+@api.get("/team")
+@login_required
+def list_team():
+    return jsonify({"members": accounts.list_members(g.db, g.business["id"]), "your_role": g.business["role"]})

@@ -14,11 +14,11 @@
 | **1. Registration, login, business profiles, CSV upload with validation and column mapping, transaction list** | Done | Sign-up/login, profile page, categories, two-step upload with automatic column matching, transactions page |
 | **2. Rule-based detection** (double charges, large/small payments, category spikes, flag storage) | Done | Per business, flags keep review status across re-runs |
 | **3. Statistical detection** (Z-score, IQR), per-business thresholds and sensitivity, severity scoring | Done | Low / Balanced / High / Custom presets, severity 0–100 |
-| **4. Machine learning + hybrid score** | Mostly done | Fraud model + Isolation Forest trained and in use. Severity already boosts payments flagged by several checks; a single combined "hybrid score" per transaction is not built yet |
-| **5. Dashboard with trends, plain-language explanations, in-app and email alerts** | Partly | Plain-language reasons on every flag and a plain dashboard. No spending-trend charts, no alerts or email yet |
-| **6. Reports (PDF/CSV), multiple record types, role-based access, audit trail** | Not started | Placeholders in the side menu |
+| **4. Machine learning + hybrid score** | Done | Fraud model + Isolation Forest in use; Combined risk page gives one 0–100 score per payment from rules + statistics + AI |
+| **Increment 4: dashboard, alerts, plain-language explanations, review workflow** | Done | Overview with spending trend and categories; flag pages explain each flag in plain words with what to check; review queue with notes and bulk actions; in-app alerts and email digests (saved to `instance/outbox` until SMTP is set) |
+| **6. Reports (PDF/CSV), multiple record types, role-based access, audit trail** | Mostly done | Reports page (print to PDF) + CSV exports, owner/reviewer/viewer roles, activity log. Multiple record types in uploads not built |
 | **7. Testing with MSME owners** | Not started | Model test results on the Kaggle test split are ready for the paper (section 6) |
-| **Frontend styling** | Not started (on purpose) | All pages are plain HTML; styling was deferred |
+| **Frontend styling** | Done | One design system in `static/style.css`; every page works on phones and in dark mode |
 
 ---
 
@@ -51,7 +51,7 @@ python app.py
 
 - Open http://127.0.0.1:5000 → **Sign up** (tick "Load sample transactions" for demo data).
 - **From a phone on the same Wi-Fi:** double-click `run_on_wifi.bat` and open the address it prints. It runs with debug mode off (debug mode must never be reachable from other devices). Restart it after code changes.
-- **Tests:** `python -m unittest` (43 tests).
+- **Tests:** `python -m unittest` (51 tests).
 - **Retrain the AI models (optional):** `pip install -r requirements-train.txt` then `python -m treasury_guard.training`. Downloads the dataset with kagglehub (~200 MB), takes a few minutes, overwrites `models/`.
 - **Requirements:** Python 3.14 venv on Marko's PC, Flask 3, **scikit-learn 1.9.1 exactly** (the saved model only loads with the same version; otherwise AI checks are skipped and the reason is logged).
 
@@ -172,7 +172,8 @@ tests/                       unit, model and page tests
 ## 9. Known issues and gaps
 
 - `mvp` branch is **not pushed** yet; retrained model files are uncommitted.
-- No styling; pages are plain HTML.
+- Email alerts need SMTP settings (see README) to really send; until then they're saved in `instance/outbox`.
+- Team members get a password from the owner; there's no invite email or password reset yet.
 - No login rate limiting or password reset; `/logout` also accepts GET.
 - The demo (goyaladi) data is synthetic: Z-score/IQR find nothing in it and AI flags are mostly quick repeat payments.
 - Date formats like `03/04/2026` are read as month/day first.

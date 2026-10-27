@@ -1,4 +1,4 @@
-"""Sprint 1 accounts and CSV import, the JSON API, and the existing pages."""
+﻿"""Sprint 1 accounts and CSV import, the JSON API, and the existing pages."""
 import io
 import json
 import tempfile
@@ -144,13 +144,16 @@ class AppTests(unittest.TestCase):
         demo = self.client.post("/upload/demo").get_data(as_text=True)
         self.assertIn("Upload complete", demo)
         dash = self.client.get("/").get_data(as_text=True)
-        for text in ("Ana's Lugawan", "Possible fraud (AI model)", "Far from the usual amount", "Severity"):
+        for text in ("Ana's Lugawan", "Possible fraud (AI model)", "Far from the usual amount", "Flags by severity",
+                     "Spending trend", "Where the money went"):
             self.assertIn(text, dash.replace("&#39;", "'"))
-        self.assertIn("High", self.client.get("/?severity=high").get_data(as_text=True))
+        self.assertIn("High", self.client.get("/flags?severity=high").get_data(as_text=True))
         tx = self.client.get("/transactions?flagged=1").get_data(as_text=True)
         self.assertIn("transactions · page 1", tx)
         self.assertEqual(self.client.get("/transactions?page=2&category=Food").status_code, 200)
         self.assertIn("Test results", self.client.get("/model").get_data(as_text=True))
+        for page in ("/risk", "/alerts", "/reports", "/activity", "/team", "/review/done"):
+            self.assertEqual(self.client.get(page).status_code, 200, page)
 
     def test_settings_page_presets_and_switches(self):
         self.client.post("/signup", data={"full_name": "Ana", "email": "set@example.com", "password": "password123",
@@ -196,7 +199,7 @@ class AppTests(unittest.TestCase):
         saved = self.client.post("/rules", data={"dup_window_hours": "24", "dup_tolerance_pct": "5",
                                                  "large_limit": "97", "small_limit": "12", "spike_multiplier": "2"})
         self.assertEqual(saved.status_code, 302)
-        self.assertEqual(self.client.get("/later/alerts").status_code, 200)
+        self.assertEqual(self.client.get("/alerts").status_code, 200)
         self.assertEqual(self.client.get("/logout").status_code, 302)
         self.assertEqual(self.client.get("/").status_code, 302)
 

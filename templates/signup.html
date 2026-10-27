@@ -1,25 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Sign up{% endblock %}
-{% block content %}
-<h2>Create your business account</h2>
-{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
-<form method="post">
-  <p><label for="full_name">Your full name</label><br>
-    <input id="full_name" name="full_name" type="text" required value="{{ form.get('full_name', '') }}"></p>
-  <p><label for="email">Email</label><br>
-    <input id="email" name="email" type="email" required value="{{ form.get('email', '') }}"></p>
-  <p><label for="password">Password (at least 8 characters)</label><br>
-    <input id="password" name="password" type="password" minlength="8" required></p>
-  <p><label for="business_name">Business name</label><br>
-    <input id="business_name" name="business_name" type="text" required value="{{ form.get('business_name', '') }}"></p>
-  <p><label for="business_type">Business type</label><br>
-    <select id="business_type" name="business_type">
-      {% for t in business_types %}
-      <option value="{{ t }}" {% if form.get('business_type') == t %}selected{% endif %}>{{ t }}</option>
-      {% endfor %}
-    </select></p>
-  <p><label><input type="checkbox" name="load_demo" value="1"> Load sample transactions (Kaggle demo data)</label></p>
-  <p><button type="submit">Create account</button></p>
-</form>
-<p>Already have an account? <a href="{{ url_for('login_page') }}">Log in</a></p>
+{% block auth %}
+<div class="card">
+  <h1>Create your business account</h1>
+  <p class="muted">Upload your transactions and Treasury Guard flags the ones worth a second look.</p>
+  {% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
+  <form method="post">
+    <div class="field"><label for="full_name">Your name</label>
+      <input id="full_name" name="full_name" type="text" autocomplete="name" required value="{{ form.get('full_name', '') }}"></div>
+    <div class="field"><label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required value="{{ form.get('email', '') }}"></div>
+    <div class="field"><label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required aria-describedby="pw-hint">
+      <span class="hint" id="pw-hint">At least 8 characters.</span></div>
+    <div class="field"><label for="business_name">Business name</label>
+      <input id="business_name" name="business_name" type="text" required value="{{ form.get('business_name', '') }}"></div>
+    <div class="field"><label for="business_type">Business type</label>
+      <select id="business_type" name="business_type">
+        {% for t in business_types %}<option value="{{ t }}" {% if form.get('business_type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select></div>
+    <label class="check" style="margin-bottom:16px"><input type="checkbox" name="load_demo" value="1"> Start with sample transactions so I can look around</label>
+    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+  </form>
+</div>
+<p class="muted" style="text-align:center;margin-top:16px">Already have an account? <a href="{{ url_for('login_page') }}">Log in</a></p>
 {% endblock %}

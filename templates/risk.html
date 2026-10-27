@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Combined risk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Combined risk</h1>
+    <p>One score per payment from the rule checks, the statistical checks and the AI models together.</p></div>
+</div>
+
+<div class="grid grid-main">
+  <section class="card" aria-labelledby="list-h">
+    <form class="filters" method="get">
+      <div class="field"><label for="level">Risk level</label>
+        <select id="level" name="level"><option value="">Every level</option>
+          {% for key, name in severity_names.items() %}<option value="{{ key }}" {% if level == key %}selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select></div>
+      <button class="btn" type="submit">Apply</button>
+    </form>
+    <p class="muted">{{ total }} payment{{ 's' if total != 1 }}{% if rows|length < total %}, showing the top {{ rows|length }}{% endif %}</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Risk</th><th>Payment</th><th class="num">Amount</th><th>Rules</th><th>Statistics</th><th>AI</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          {% set t = r.txn %}
+          <tr>
+            <td><span class="score sev-{{ r.level }}" title="{{ severity_names[r.level] }} risk">{{ r.score }}</span></td>
+            <td><a class="row-link" href="{{ url_for('flag_page', flag_key=(r.flags|sort(attribute='severity_score', reverse=true)|first).flag_key) }}">
+                {% set who = t.counterparty or t.merchant %}{{ ('Account ' ~ who) if who and who.isdigit() else (who or t.category) }}</a>
+              <span class="cell-sub">{{ short_date(t.occurred_at) }} · {{ t.category }} · {% for k in r.flags|map(attribute='type')|unique %}{{ rule_names[k] }}{{ ', ' if not loop.last }}{% endfor %}</span></td>
+            <td class="num">{{ t.amount|money }}</td>
+            {% for m in ('rule', 'statistical', 'machine_learning') %}
+            <td class="num">{% if m in r.methods %}{{ r.methods[m] }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr><td colspan="6">{{ ui.empty("No payments at this risk level.", icon_name="gauge") }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="how-h">
+    <h2 id="how-h" style="margin-bottom:10px">How the score works</h2>
+    <ol class="steps">
+      <li>Each kind of check gives the payment a score from 0 to 100: the <b>rules</b> (double charges, limits, spending jumps), the <b>statistics</b> (Z-score and IQR) and the <b>AI models</b>.</li>
+      <li>The risk starts at the highest of those.</li>
+      <li>If two kinds agree, it goes up by 15. If all three agree, by 25. It never goes above 100.</li>
+    </ol>
+    <p class="muted" style="margin-top:10px">75 and up is High, 50 to 74 Medium, below 50 Low. Flags you marked OK don't count, so a payment drops off this list once it checks out.</p>
+  </section>
+</div>
+{% endblock %}

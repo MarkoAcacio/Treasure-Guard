@@ -43,7 +43,8 @@ def save_detection_results(conn, business_id, flags, scanned, settings):
         (business_id, stamp, scanned, len(flags), json.dumps(counts), json.dumps(settings)),
     )
     conn.commit()
-    return {"ran_at": stamp, "scanned": scanned, "total": len(flags), "counts": counts}
+    return {"ran_at": stamp, "scanned": scanned, "total": len(flags), "counts": counts,
+            "new_flags": [f for f in flags if f["key"] not in old_keys]}
 
 
 def _to_dict(row):
@@ -79,15 +80,32 @@ def get_flag(conn, business_id, flag_key):
     return _to_dict(row) if row else None
 
 
-def set_status(conn, business_id, flag_key, status):
+def set_status(conn, business_id, flag_key, status, note=None, user_id=None):
+    """Record a review decision. `note=None` keeps the existing note."""
     if status not in STATUSES:
         raise ValueError(f"Status must be one of: {', '.join(STATUSES)}.")
     cur = conn.execute(
-        "UPDATE flags SET status = ?, reviewed_at = ? WHERE business_id = ? AND flag_key = ?",
-        (status, now(), business_id, flag_key),
+        """UPDATE flags SET status = ?, reviewed_at = ?, reviewed_by = ?, review_note = COALESCE(?, review_note)
+           WHERE business_id = ? AND flag_key = ?""",
+        (status, now(), user_id, None if note is None else note.strip()[:1000], business_id, flag_key),
     )
     conn.commit()
     return cur.rowcount == 1
+
+
+def next_to_review(conn, business_id, after_key=None):
+    """The most severe flag still needing review, skipping `after_key`."""
+    row = conn.execute(
+        """SELECT flag_key FROM flags WHERE business_id = ? AND status = 'new' AND flag_key != ?
+           ORDER BY severity_score DESC, occurred_at DESC LIMIT 1""", (business_id, after_key or ""),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def flags_for_transactions(conn, business_id, txn_ids):
+    """Every flag that involves any of these transactions."""
+    wanted = set(txn_ids)
+    return [f for f in list_flags(conn, business_id) if wanted & set(f["txn_ids"])]
 
 
 def count_by(conn, business_id, column):

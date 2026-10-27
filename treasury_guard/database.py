@@ -86,8 +86,48 @@ CREATE TABLE IF NOT EXISTS flags (
     detected_at   TEXT NOT NULL,
     last_seen_at  TEXT NOT NULL,
     reviewed_at   TEXT,
+    reviewed_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    review_note   TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (business_id, flag_key)
 );
+
+-- Who can use a business, and what they may do: owner | reviewer | viewer
+CREATE TABLE IF NOT EXISTS members (
+    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,  -- one business per user
+    role        TEXT NOT NULL,
+    added_at    TEXT NOT NULL,
+    PRIMARY KEY (business_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    flag_key    TEXT NOT NULL,
+    severity    TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    read_at     TEXT,
+    emailed_to  TEXT                        -- address the alert was emailed to, if any
+);
+CREATE INDEX IF NOT EXISTS ix_alerts_business ON alerts (business_id, id);
+
+CREATE TABLE IF NOT EXISTS alert_settings (
+    business_id INTEGER PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+    value       TEXT NOT NULL               -- JSON of settings
+);
+
+-- Audit trail: uploads, setting changes, reviews, team changes
+CREATE TABLE IF NOT EXISTS activity (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    at          TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    detail      TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_activity_business ON activity (business_id, id);
 
 CREATE TABLE IF NOT EXISTS detection_runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,7 +141,7 @@ CREATE TABLE IF NOT EXISTS detection_runs (
 """
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Tables from the single-business Increment 2 MVP. They held only flags generated from the
 # demo dataset, so they are dropped and re-created per business.
@@ -112,11 +152,25 @@ def connect(path=DEFAULT_DB_PATH):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < 2:
         _upgrade_from_mvp(conn)
     conn.executescript(SCHEMA)
+    if version < 3:
+        _upgrade_to_review_and_teams(conn)
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return conn
+
+
+def _upgrade_to_review_and_teams(conn):
+    """Increment 4: review notes on flags, and every existing owner becomes a member of their business."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(flags)")}
+    if "review_note" not in cols:
+        conn.execute("ALTER TABLE flags ADD COLUMN reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        conn.execute("ALTER TABLE flags ADD COLUMN review_note TEXT NOT NULL DEFAULT ''")
+    conn.execute("INSERT OR IGNORE INTO members (business_id, user_id, role, added_at) "
+                 "SELECT id, owner_user_id, 'owner', created_at FROM businesses")
+    conn.commit()
 
 
 def _upgrade_from_mvp(conn):

@@ -1,84 +1,107 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Upload CSV{% endblock %}
 {% block content %}
-<h2>Upload transactions (CSV)</h2>
-{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
+<div class="page-head">
+  <div><h1>Upload transactions</h1><p>Every payment is checked as soon as the file is in.</p></div>
+</div>
+{% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
 
 {% if summary %}
-<h3>Upload complete: {{ summary.filename }}</h3>
-<table>
-  <tr><th>Rows in file</th><td>{{ summary.rows_total }}</td></tr>
-  <tr><th>Imported</th><td>{{ summary.rows_imported }}</td></tr>
-  <tr><th>Skipped (problems)</th><td>{{ summary.rows_skipped_invalid }}</td></tr>
-  <tr><th>Skipped (already uploaded)</th><td>{{ summary.rows_skipped_already_imported }}</td></tr>
-</table>
-{% if summary.errors %}
-<h4>Rows that were skipped</h4>
-<table>
-  <tr><th>Line</th><th>Problem</th></tr>
-  {% for e in summary.errors %}<tr><td>{{ e.line }}</td><td>{{ e.problems | join('; ') }}</td></tr>{% endfor %}
-</table>
-{% endif %}
-<p>Detection ran on all your payments and found {{ found_total }} flags:</p>
-<ul>{% for name, n in found.items() %}<li>{{ name }}: {{ n }}</li>{% else %}<li>None</li>{% endfor %}</ul>
-<p><a href="{{ url_for('dashboard') }}">See flagged transactions</a></p>
+<section class="card" aria-labelledby="done-h" style="margin-bottom:16px">
+  <h2 id="done-h" style="margin-bottom:10px">Upload complete: {{ summary.filename }}</h2>
+  <div class="grid grid-2">
+    <table>
+      <tr><th>Rows in file</th><td>{{ summary.rows_total }}</td></tr>
+      <tr><th>Imported</th><td>{{ summary.rows_imported }}</td></tr>
+      <tr><th>Skipped (problems)</th><td>{{ summary.rows_skipped_invalid }}</td></tr>
+      <tr><th>Skipped (already uploaded)</th><td>{{ summary.rows_skipped_already_imported }}</td></tr>
+    </table>
+    <div>
+      <p><b>{{ found_total }} flags</b> across all your payments{% if new_alerts %}, {{ new_alerts }} of them new enough to raise an alert{% endif %}.</p>
+      <ul class="list">{% for name, n in found.items() %}<li><span class="grow">{{ name }}</span><span class="num">{{ n }}</span></li>{% else %}<li>Nothing unusual found.</li>{% endfor %}</ul>
+      <p style="margin-top:12px"><a class="btn btn-primary" href="{{ url_for('review') }}">Start reviewing {{ ui.icon('right') }}</a></p>
+    </div>
+  </div>
+  {% if summary.errors %}
+  <h3 style="margin:12px 0 6px">Rows that were skipped</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Line</th><th>Problem</th></tr></thead>
+    <tbody>{% for e in summary.errors %}<tr><td>{{ e.line }}</td><td>{{ e.problems | join('; ') }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
 {% endif %}
 
 {% if preview %}
-<h3>Step 2: Match your columns — {{ filename }} ({{ preview.row_count }} rows)</h3>
-<form method="post" action="{{ url_for('upload_import') }}">
-  <table>
-    <tr><th>Field</th><th>Your column</th><th>Meaning</th></tr>
-    {% for field, info in preview.fields.items() %}
-    <tr>
-      <td><label for="map_{{ field }}">{{ field }}{% if info.required %} (required){% endif %}</label></td>
-      <td>
-        <select id="map_{{ field }}" name="map_{{ field }}">
-          <option value="">(not in my file)</option>
-          {% for col in preview.columns %}
-          <option value="{{ col }}" {% if preview.suggested_mapping.get(field) == col %}selected{% endif %}>{{ col }}</option>
-          {% endfor %}
-        </select>
-      </td>
-      <td>{{ info.description }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% if preview.ignored_columns %}<p>Not used (will be ignored): {{ preview.ignored_columns | join(', ') }}</p>{% endif %}
-  <p><button type="submit">Import and check for anomalies</button></p>
-</form>
-<h4>First rows of your file</h4>
-<div class="scroll">
-<table>
-  <tr>{% for col in preview.columns %}<th>{{ col }}</th>{% endfor %}</tr>
-  {% for row in preview.sample_rows %}
-  <tr>{% for col in preview.columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>
-  {% endfor %}
-</table>
-</div>
+<section class="card" aria-labelledby="map-h" style="margin-bottom:16px">
+  <div class="card-head"><div><h2 id="map-h">Step 2: Match your columns</h2>
+    <p>{{ filename }} · {{ preview.row_count }} rows. We guessed the matches; fix any that are wrong.</p></div></div>
+  <form method="post" action="{{ url_for('upload_import') }}">
+    <div class="table-wrap"><table>
+      <thead><tr><th>We need</th><th>Your column</th><th>What it means</th></tr></thead>
+      <tbody>
+      {% for field, info in preview.fields.items() %}
+      <tr>
+        <td><label for="map_{{ field }}">{{ field }}{% if info.required %} <span class="badge plain sev-high">Required</span>{% endif %}</label></td>
+        <td><select id="map_{{ field }}" name="map_{{ field }}">
+            <option value="">(not in my file)</option>
+            {% for col in preview.columns %}
+            <option value="{{ col }}" {% if preview.suggested_mapping.get(field) == col %}selected{% endif %}>{{ col }}</option>
+            {% endfor %}
+          </select></td>
+        <td class="muted">{{ info.description }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if preview.ignored_columns %}<p class="muted" style="margin-top:10px">Not used (left out and never stored): {{ preview.ignored_columns | join(', ') }}</p>{% endif %}
+    <div class="actions" style="margin-top:12px">
+      <button class="btn btn-primary" type="submit">Import and check for anomalies</button>
+      <a class="btn btn-ghost" href="{{ url_for('upload_page') }}">Choose a different file</a>
+    </div>
+  </form>
+  <h3 style="margin:18px 0 6px">First rows of your file</h3>
+  <div class="table-wrap"><table>
+    <thead><tr>{% for col in preview.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in preview.sample_rows %}<tr>{% for col in preview.columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+</section>
 {% endif %}
 
 {% if not preview %}
-<h3>Step 1: Choose a file</h3>
-<form method="post" action="{{ url_for('upload_preview') }}" enctype="multipart/form-data">
-  <p><label for="file">CSV file (up to 5 MB)</label><br>
-    <input id="file" name="file" type="file" accept=".csv,text/csv" required></p>
-  <p><button type="submit">Upload and preview</button></p>
-</form>
-<p>Columns: Date and Amount are required; Type (payment/income), Payee, Category, Merchant, Reference and Description help.
-  Include the time of each payment if you have it. <a href="{{ url_for('template_csv') }}">Download a template</a>.</p>
-<form method="post" action="{{ url_for('upload_demo') }}">
-  <p>No file yet? <button type="submit">Load sample data</button> (1,000 transactions from a Kaggle dataset)</p>
-</form>
+<div class="grid grid-2" style="margin-bottom:16px">
+  <section class="card" aria-labelledby="pick-h">
+    <h2 id="pick-h" style="margin-bottom:10px">Step 1: Choose a file</h2>
+    <form method="post" action="{{ url_for('upload_preview') }}" enctype="multipart/form-data">
+      <div class="field"><label for="file">CSV file, up to 5 MB</label>
+        <input id="file" name="file" type="file" accept=".csv,text/csv" required></div>
+      <button class="btn btn-primary" type="submit">{{ ui.icon('upload') }} Upload and preview</button>
+    </form>
+  </section>
+  <section class="card" aria-labelledby="fmt-h">
+    <h2 id="fmt-h" style="margin-bottom:8px">What to include</h2>
+    <p class="muted">Date and Amount are required. Type (payment or income), Payee, Category, Merchant, Reference and Description help.
+      Add the time of each payment if you have it: the fraud model is more accurate with it.</p>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('template_csv') }}">{{ ui.icon('download') }} Download a template</a>
+      <form method="post" action="{{ url_for('upload_demo') }}"><button class="btn btn-ghost" type="submit">Load sample data</button></form>
+    </div>
+  </section>
+</div>
 {% endif %}
 
-<h3>Past uploads</h3>
-<table>
-  <tr><th>When</th><th>File</th><th>Imported</th><th>Skipped</th></tr>
-  {% for u in uploads %}
-  <tr><td>{{ u.uploaded_at.replace('T', ' ') }}</td><td>{{ u.filename }}</td><td>{{ u.rows_imported }}</td><td>{{ u.rows_skipped }}</td></tr>
-  {% else %}
-  <tr><td colspan="4">No uploads yet.</td></tr>
-  {% endfor %}
-</table>
+<section class="card" aria-labelledby="past-h">
+  <h2 id="past-h" style="margin-bottom:8px">Past uploads</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>When</th><th>File</th><th class="num">Imported</th><th class="num">Skipped</th></tr></thead>
+    <tbody>
+    {% for u in uploads %}
+    <tr><td class="muted">{{ u.uploaded_at|when }}</td><td>{{ u.filename }}</td><td class="num">{{ u.rows_imported }}</td><td class="num">{{ u.rows_skipped }}</td></tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">No uploads yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
 {% endblock %}

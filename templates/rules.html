@@ -1,78 +1,89 @@
 {% extends "base.html" %}
 {% block title %}Detection settings{% endblock %}
 {% block content %}
-<h2>Detection settings</h2>
-<p>Saving checks all your payments again. Flags that still apply keep their review status.</p>
-{% if error %}<p role="alert"><strong>{{ error }}</strong></p>{% endif %}
+{% set locked = not can('owner') %}
+<div class="page-head">
+  <div><h1>Detection settings</h1><p>Saving checks all your payments again. Flags that still apply keep their review status.</p></div>
+</div>
+{% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
+{% if locked %}<div class="notice info"><p>Only the owner can change these settings.</p></div>{% endif %}
 
-<form method="post">
-  <fieldset>
+<form method="post" class="card" style="max-width:860px">
+  <fieldset {% if locked %}disabled{% endif %}>
     <legend>Sensitivity</legend>
-    <p><label for="sensitivity">Overall sensitivity</label><br>
+    <div class="field"><label for="sensitivity">Overall sensitivity</label>
       <select id="sensitivity" name="sensitivity">
         {% for key, name in sensitivity_names.items() %}
         <option value="{{ key }}" {% if settings.sensitivity == key %}selected{% endif %}>{{ name }}</option>
         {% endfor %}
-      </select></p>
-    <p>Choosing Low, Balanced or High sets the thresholds below for you. Changing a threshold yourself switches to Custom.</p>
+      </select>
+      <span class="hint">Low, Balanced and High set the thresholds below for you. Changing a threshold yourself switches to Custom.</span></div>
   </fieldset>
 
-  <fieldset>
+  <fieldset {% if locked %}disabled{% endif %}>
     <legend>Possible double charge</legend>
-    <p><label for="dup_window_hours">Time window (hours)</label><br>
-      <input id="dup_window_hours" name="dup_window_hours" type="number" min="1" step="1" value="{{ settings.dup_window_hours }}"></p>
-    <p><label for="dup_tolerance_pct">Amount tolerance (%)</label><br>
-      <input id="dup_tolerance_pct" name="dup_tolerance_pct" type="number" min="0" max="50" step="0.5" value="{{ settings.dup_tolerance_pct }}"></p>
+    <div class="form-grid">
+      <div class="field"><label for="dup_window_hours">Within this many hours</label>
+        <input id="dup_window_hours" name="dup_window_hours" type="number" min="1" step="1" value="{{ settings.dup_window_hours }}"></div>
+      <div class="field"><label for="dup_tolerance_pct">Amounts at most this far apart (%)</label>
+        <input id="dup_tolerance_pct" name="dup_tolerance_pct" type="number" min="0" max="50" step="0.5" value="{{ settings.dup_tolerance_pct }}"></div>
+    </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset {% if locked %}disabled{% endif %}>
     <legend>Unusually large or small payments</legend>
-    <p><label for="large_limit">Flag payments at or above</label><br>
-      <input id="large_limit" name="large_limit" type="number" min="0" step="0.01" value="{{ settings.large_limit }}"></p>
-    <p><label for="small_limit">Flag payments at or below</label><br>
-      <input id="small_limit" name="small_limit" type="number" min="0" step="0.01" value="{{ settings.small_limit }}"></p>
-    <p>
+    <div class="form-grid">
+      <div class="field"><label for="large_limit">Flag payments of at least</label>
+        <input id="large_limit" name="large_limit" type="number" min="0" step="0.01" value="{{ settings.large_limit }}"></div>
+      <div class="field"><label for="small_limit">Flag payments of at most</label>
+        <input id="small_limit" name="small_limit" type="number" min="0" step="0.01" value="{{ settings.small_limit }}"></div>
+    </div>
+    <p class="hint">
       {% if settings.limits_source == 'owner' %}You set these limits.
-      {% elif settings.limits_source == 'data' %}Set automatically from your payments (top and bottom 1%) until you change them.
-      {% else %}Default limits; they will be set from your payments after your first upload.{% endif %}
+      {% elif settings.limits_source == 'data' %}Set from your own payments (the top and bottom 1%) until you change them.
+      {% else %}Default limits. After your first upload they're set from your payments.{% endif %}
       {% if suggested %}Suggested from your data: {{ suggested.small_limit | money }} and {{ suggested.large_limit | money }}.{% endif %}
     </p>
   </fieldset>
 
-  <fieldset>
+  <fieldset {% if locked %}disabled{% endif %}>
     <legend>Category spending jump</legend>
-    <p><label for="spike_multiplier">Times the category's daily average for the month</label><br>
-      <input id="spike_multiplier" name="spike_multiplier" type="number" min="1" step="0.1" value="{{ settings.spike_multiplier }}"></p>
+    <div class="field"><label for="spike_multiplier">Flag a day when a category's spending is this many times its daily average</label>
+      <input id="spike_multiplier" name="spike_multiplier" type="number" min="1" step="0.1" value="{{ settings.spike_multiplier }}" style="max-width:200px"></div>
   </fieldset>
 
-  <fieldset>
+  <fieldset {% if locked %}disabled{% endif %}>
     <legend>Statistical checks (Z-score and IQR)</legend>
-    <p><label><input type="checkbox" name="statistical_enabled" value="1" {% if settings.statistical_enabled %}checked{% endif %}> Turn on</label></p>
-    <p><label for="zscore_threshold">Z-score: flag at this many standard deviations from the category average</label><br>
-      <input id="zscore_threshold" name="zscore_threshold" type="number" min="1" max="10" step="0.1" value="{{ settings.zscore_threshold }}"></p>
-    <p><label for="iqr_multiplier">IQR: normal range multiplier (k)</label><br>
-      <input id="iqr_multiplier" name="iqr_multiplier" type="number" min="0.5" max="10" step="0.1" value="{{ settings.iqr_multiplier }}"></p>
-    <p><label for="min_category_samples">Categories with fewer payments than this are compared with all payments</label><br>
-      <input id="min_category_samples" name="min_category_samples" type="number" min="3" max="1000" step="1" value="{{ settings.min_category_samples }}"></p>
+    <label class="check" style="margin-bottom:10px"><input type="checkbox" name="statistical_enabled" value="1" {% if settings.statistical_enabled %}checked{% endif %}> Turn on</label>
+    <div class="form-grid">
+      <div class="field"><label for="zscore_threshold">Z-score: standard deviations from the category average</label>
+        <input id="zscore_threshold" name="zscore_threshold" type="number" min="1" max="10" step="0.1" value="{{ settings.zscore_threshold }}"></div>
+      <div class="field"><label for="iqr_multiplier">IQR: how wide the normal range is (k)</label>
+        <input id="iqr_multiplier" name="iqr_multiplier" type="number" min="0.5" max="10" step="0.1" value="{{ settings.iqr_multiplier }}"></div>
+    </div>
+    <div class="field"><label for="min_category_samples">Categories with fewer payments than this are compared with all your payments</label>
+      <input id="min_category_samples" name="min_category_samples" type="number" min="3" max="1000" step="1" value="{{ settings.min_category_samples }}" style="max-width:200px"></div>
   </fieldset>
 
-  <fieldset>
+  <fieldset {% if locked %}disabled{% endif %}>
     <legend>AI checks</legend>
-    <p><label><input type="checkbox" name="fraud_model_enabled" value="1" {% if settings.fraud_model_enabled %}checked{% endif %}> Fraud model: flag likely fraud</label></p>
-    <p><label for="fraud_min_probability_pct">Minimum fraud risk to flag (%)</label><br>
-      <input id="fraud_min_probability_pct" name="fraud_min_probability_pct" type="number" min="1" max="99" step="1"
+    <label class="check"><input type="checkbox" name="fraud_model_enabled" value="1" {% if settings.fraud_model_enabled %}checked{% endif %}> Fraud model: flag likely fraud</label>
+    <div class="field" style="margin-top:8px"><label for="fraud_min_probability_pct">Lowest fraud risk to flag (%)</label>
+      <input id="fraud_min_probability_pct" name="fraud_min_probability_pct" type="number" min="1" max="99" step="1" style="max-width:200px"
              value="{{ '%.0f' % (settings.fraud_min_probability * 100) if settings.fraud_min_probability else '' }}"
              placeholder="{{ 'recommended: %.0f' % (model_threshold * 100) if model_threshold else 'recommended' }}">
-      <br>Leave empty to use the model's recommended level{% if model_threshold %} ({{ '%.0f' % (model_threshold * 100) }}%){% endif %}.</p>
-    <p><label><input type="checkbox" name="ml_enabled" value="1" {% if settings.ml_enabled %}checked{% endif %}> Unusual-pattern model</label></p>
-    <p><label for="ml_percentile">Flag payments more unusual than this % of your payments</label><br>
-      <input id="ml_percentile" name="ml_percentile" type="number" min="80" max="99.9" step="0.1" value="{{ settings.ml_percentile }}"></p>
+      <span class="hint">Leave it empty to use the model's recommended level{% if model_threshold %} ({{ '%.0f' % (model_threshold * 100) }}%){% endif %}.</span></div>
+    <label class="check"><input type="checkbox" name="ml_enabled" value="1" {% if settings.ml_enabled %}checked{% endif %}> Unusual-pattern model</label>
+    <div class="field" style="margin-top:8px"><label for="ml_percentile">Flag payments more unusual than this % of your payments</label>
+      <input id="ml_percentile" name="ml_percentile" type="number" min="80" max="99.9" step="0.1" value="{{ settings.ml_percentile }}" style="max-width:200px"></div>
     <p><a href="{{ url_for('model_page') }}">How the AI models were trained and tested</a></p>
   </fieldset>
 
-  <p>
-    <button type="submit">Save and check again</button>
-    <button type="submit" name="reset" value="1">Use defaults</button>
-  </p>
+  {% if not locked %}
+  <div class="actions">
+    <button class="btn btn-primary" type="submit">Save and check again</button>
+    <button class="btn btn-ghost" type="submit" name="reset" value="1">Go back to defaults</button>
+  </div>
+  {% endif %}
 </form>
 {% endblock %}

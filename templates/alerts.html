@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Alerts{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Alerts</h1><p>New flags show up here after each upload or re-check. Opening a flag marks its alert as read.</p></div>
+  {% if unread_alerts %}
+  <form method="post" action="{{ url_for('alerts_read') }}"><button class="btn" type="submit">{{ ui.icon('check') }} Mark all as read</button></form>
+  {% endif %}
+</div>
+
+<div class="grid grid-main">
+  <section class="card" aria-labelledby="list-h">
+    <div class="card-head"><h2 id="list-h">{{ unread_alerts }} unread</h2></div>
+    {% if alerts %}
+    <ul class="list">
+      {% for a in alerts %}
+      <li class="{{ 'unread' if not a.read_at }}">
+        <span class="dot" aria-hidden="true"></span>
+        <div class="grow">
+          <div class="actions" style="gap:6px;margin-bottom:2px">{{ ui.sev(a.severity) }}
+            {% if not a.read_at %}<span class="badge plain st-new">New</span>{% endif %}</div>
+          {% if a.flag_key in existing %}<a class="title" href="{{ url_for('flag_page', flag_key=a.flag_key) }}">{{ a.title }}</a>
+          {% else %}<span class="title">{{ a.title }}</span>{% endif %}
+          <p class="meta" style="margin:2px 0 0">{{ a.message }}</p>
+          <span class="meta">{{ a.created_at|when }}
+            {% if a.emailed_to %} · Emailed to {{ a.emailed_to }}{% endif %}
+            {% if a.flag_key not in existing %} · This flag no longer applies after a re-check{% endif %}</span>
+        </div>
+        {% if not a.read_at %}
+        <form method="post" action="{{ url_for('alerts_read') }}"><input type="hidden" name="ids" value="{{ a.id }}">
+          <button class="btn btn-sm btn-ghost" type="submit" aria-label="Mark as read: {{ a.title }}">{{ ui.icon('check') }}</button></form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {{ ui.empty("No alerts yet. When a check finds something new, it shows up here.", icon_name="bell") }}
+    {% endif %}
+  </section>
+
+  <div class="stack">
+    <section class="card" aria-labelledby="set-h">
+      <h2 id="set-h" style="margin-bottom:12px">Alert settings</h2>
+      <form method="post" action="{{ url_for('alerts_settings') }}">
+        <div class="field"><label for="in_app_min_severity">Show an alert in the app for</label>
+          <select id="in_app_min_severity" name="in_app_min_severity" {% if not can('owner') %}disabled{% endif %}>
+            {% for l in levels %}<option value="{{ l }}" {% if settings.in_app_min_severity == l %}selected{% endif %}>{{ severity_names[l] }}{{ ' only' if l == 'high' else ' and above' if l == 'medium' else ': every new flag' }}</option>{% endfor %}
+          </select></div>
+        <label class="check"><input type="checkbox" name="email_enabled" value="1" {% if settings.email_enabled %}checked{% endif %} {% if not can('owner') %}disabled{% endif %}> Also send me an email</label>
+        <div class="field" style="margin-top:10px"><label for="email_to">Email address</label>
+          <input id="email_to" name="email_to" type="email" value="{{ settings.email_to }}" {% if not can('owner') %}disabled{% endif %}></div>
+        <div class="field"><label for="email_min_severity">Email me about</label>
+          <select id="email_min_severity" name="email_min_severity" {% if not can('owner') %}disabled{% endif %}>
+            {% for l in levels %}<option value="{{ l }}" {% if settings.email_min_severity == l %}selected{% endif %}>{{ severity_names[l] }}{{ ' only' if l == 'high' else ' and above' if l == 'medium' else ': every new flag' }}</option>{% endfor %}
+          </select>
+          <span class="hint">New flags from one check-up arrive together in one email.</span></div>
+        {% if can('owner') %}<button class="btn btn-primary" type="submit">Save settings</button>
+        {% else %}<p class="muted">Only the owner can change these.</p>{% endif %}
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="mail-h">
+      <h2 id="mail-h" style="margin-bottom:8px">Email delivery</h2>
+      {% if live_mail %}
+      <p class="muted">Emails go out through your mail server.</p>
+      {% else %}
+      <div class="notice info"><p><b>Development mode.</b> No real emails are sent. Each one is saved as a file in
+        <code>{{ outbox_path }}</code> so you can open and check it. Set the SMTP settings in the README to send for real.</p></div>
+      {% if outbox %}
+      <h3 style="margin-bottom:6px">Latest saved emails</h3>
+      <ul class="list">{% for m in outbox %}<li><div class="grow"><span class="title">{{ m.subject }}</span>
+        <span class="meta">To {{ m.to }} · {{ m.saved_at }} · {{ m.file }}</span></div></li>{% endfor %}</ul>
+      {% endif %}
+      {% endif %}
+      {% if can('owner') %}
+      <form method="post" action="{{ url_for('alerts_test_email') }}" style="margin-top:12px">
+        <button class="btn" type="submit">{{ ui.icon('mail') }} Send a test email</button></form>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

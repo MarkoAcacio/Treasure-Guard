@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Flagged payments{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Flagged payments</h1><p>Open one to see why it was flagged, then mark it as an issue or OK.</p></div>
+  <div class="actions"><a class="btn btn-primary" href="{{ url_for('review') }}">{{ ui.icon('review') }} Review one by one</a></div>
+</div>
+
+<div class="card">
+  <form class="filters" method="get" action="{{ url_for('flags_page') }}">
+    <div class="field"><label for="type">Check</label>
+      <select id="type" name="type"><option value="">All checks</option>
+        {% for key, name in rule_names.items() %}<option value="{{ key }}" {% if key == selected.type %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="severity">Severity</label>
+      <select id="severity" name="severity"><option value="">Any severity</option>
+        {% for key, name in severity_names.items() %}<option value="{{ key }}" {% if key == selected.severity %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="status">Status</label>
+      <select id="status" name="status"><option value="">Any status</option>
+        {% for key, name in status_names.items() %}<option value="{{ key }}" {% if key == selected.status %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="sort">Sort by</label>
+      <select id="sort" name="sort">
+        <option value="severity" {% if selected.sort == 'severity' %}selected{% endif %}>Most severe first</option>
+        <option value="date" {% if selected.sort == 'date' %}selected{% endif %}>Newest first</option>
+      </select></div>
+    <button class="btn" type="submit">Apply</button>
+  </form>
+
+  <form method="post" action="{{ url_for('bulk_status') }}" id="bulk">
+    <div class="card-head" style="margin-bottom:6px">
+      <p style="margin:0">Showing {{ flags|length }} of {{ total }} flags</p>
+      {% if can('reviewer') and flags %}
+      <div class="actions">
+        <span class="muted" id="picked" aria-live="polite">Tick flags to review several at once:</span>
+        <button class="btn btn-sm btn-danger" name="status" value="confirmed">{{ ui.icon('flag') }} Confirm issue</button>
+        <button class="btn btn-sm btn-ok" name="status" value="dismissed">{{ ui.icon('check') }} Mark OK</button>
+      </div>
+      {% endif %}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          {% if can('reviewer') %}<th><input type="checkbox" id="all" aria-label="Select all shown flags"></th>{% endif %}
+          <th>Severity</th><th>What was found</th><th>Date</th><th class="num">Amount</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          {% for f in flags %}
+          <tr>
+            {% if can('reviewer') %}<td><input type="checkbox" name="keys" value="{{ f.flag_key }}" aria-label="Select: {{ headline(f) }}"></td>{% endif %}
+            <td>{{ ui.sev(f.severity, f.severity_score) }}</td>
+            <td><a class="row-link" href="{{ url_for('flag_page', flag_key=f.flag_key) }}">{{ headline(f) }}</a>
+              <span class="cell-sub">{{ rule_names.get(f.type, f.type) }} · {{ method_names.get(f.method, f.method) }}</span></td>
+            <td class="num">{{ short_date(f.occurred_at) }}</td>
+            <td class="num">{{ f.amount|money }}</td>
+            <td>{{ ui.status(f.status) }}{% if f.review_note %}<span class="cell-sub" title="{{ f.review_note }}">Has a note</span>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6">{{ ui.empty("No flags match these filters.") }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+</div>
+<script>
+  (function () {
+    var all = document.getElementById("all");
+    if (!all) return;
+    var boxes = document.querySelectorAll('#bulk input[name="keys"]'), picked = document.getElementById("picked");
+    function count() { var n = document.querySelectorAll('#bulk input[name="keys"]:checked').length;
+      picked.textContent = n ? n + " selected:" : "Tick flags to review several at once:"; }
+    all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); count(); });
+    boxes.forEach(function (b) { b.addEventListener("change", count); });
+  })();
+</script>
+{% endblock %}

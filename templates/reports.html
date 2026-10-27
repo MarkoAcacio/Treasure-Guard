@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+{% set range_args = {'from': date_from, 'to': date_to} if date_from or date_to else {} %}
+<div class="page-head">
+  <div><h1>Anomaly report</h1>
+    <p>{{ current_business.name }} ·
+      {% if date_from or date_to %}{{ short_date(date_from) if date_from else 'Start' }} to {{ short_date(date_to) if date_to else 'today' }}{% else %}All dates{% endif %}</p></div>
+  <div class="actions no-print">
+    <button class="btn" type="button" onclick="window.print()">{{ ui.icon('printer') }} Print or save as PDF</button>
+    <a class="btn" href="{{ url_for('report_flags_csv', **range_args) }}">{{ ui.icon('download') }} Flags (CSV)</a>
+    <a class="btn" href="{{ url_for('report_transactions_csv', **range_args) }}">{{ ui.icon('download') }} Transactions (CSV)</a>
+  </div>
+</div>
+
+<form class="card filters no-print" method="get">
+  <div class="field"><label for="from">From</label><input id="from" name="from" type="date" value="{{ date_from }}"></div>
+  <div class="field"><label for="to">To</label><input id="to" name="to" type="date" value="{{ date_to }}"></div>
+  <button class="btn btn-primary" type="submit">Update report</button>
+  {% if range_args %}<a class="btn btn-ghost" href="{{ url_for('reports_page') }}">Clear dates</a>{% endif %}
+</form>
+
+<div class="grid grid-4 section">
+  <div class="card kpi"><div class="label">Spent</div><div class="value">{{ s.spent|money }}</div><div class="sub">{{ "{:,}".format(s.payments) }} payments</div></div>
+  <div class="card kpi"><div class="label">Flags</div><div class="value">{{ s.flags|length }}</div>
+    <div class="sub">{{ s.by_severity.get('high', 0) }} high · {{ s.by_severity.get('medium', 0) }} medium · {{ s.by_severity.get('low', 0) }} low</div></div>
+  <div class="card kpi"><div class="label">Confirmed issues</div><div class="value">{{ s.by_status.get('confirmed', 0) }}</div><div class="sub">{{ s.confirmed_amount|money }} involved</div></div>
+  <div class="card kpi"><div class="label">Still to review</div><div class="value">{{ s.by_status.get('new', 0) }}</div><div class="sub">{{ s.by_status.get('dismissed', 0) }} marked OK</div></div>
+</div>
+
+<div class="grid grid-2 section">
+  <section class="card" aria-labelledby="bytype-h">
+    <h2 id="bytype-h" style="margin-bottom:8px">Flags by check</h2>
+    <table><tbody>
+      {% for key, name in rule_names.items() %}<tr><td>{{ name }}</td><td class="num">{{ s.by_type.get(key, 0) }}</td></tr>{% endfor %}
+    </tbody></table>
+  </section>
+  <section class="card" aria-labelledby="conf-h">
+    <h2 id="conf-h" style="margin-bottom:8px">Confirmed issues</h2>
+    {% set confirmed = s.flags|selectattr('status', 'equalto', 'confirmed')|list %}
+    {% if confirmed %}
+    <ul class="list">{% for f in confirmed[:10] %}<li><div class="grow"><span class="title">{{ headline(f) }}</span>
+      <span class="meta">{{ short_date(f.occurred_at) }}{% if f.review_note %} · Note: {{ f.review_note }}{% endif %}</span></div></li>{% endfor %}</ul>
+    {% else %}<p class="muted">None confirmed in this period.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card section" aria-labelledby="top-h">
+  <h2 id="top-h" style="margin-bottom:8px">Most severe flags</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Severity</th><th>What was found</th><th>Date</th><th class="num">Amount</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for f in s.flags[:15] %}
+        <tr><td>{{ ui.sev(f.severity, f.severity_score) }}</td>
+          <td>{{ headline(f) }}<span class="cell-sub">{{ f.reason }}</span></td>
+          <td class="num">{{ short_date(f.occurred_at) }}</td><td class="num">{{ f.amount|money }}</td><td>{{ ui.status(f.status) }}</td></tr>
+        {% else %}
+        <tr><td colspan="5">{{ ui.empty("No flags in this period.") }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
