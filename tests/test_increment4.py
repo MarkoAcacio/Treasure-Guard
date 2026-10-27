@@ -114,6 +114,18 @@ class Increment4Tests(unittest.TestCase):
         tx = self.owner.get("/reports/transactions.csv?from=2022-02-01").get_data(as_text=True)
         self.assertNotIn("2022-01-", tx)
 
+    def test_reused_row_numbers_from_another_file_are_imported(self):
+        self.load_demo()  # sample data uses TransactionID 1..1000
+        csv_bytes = b"TransactionID,Timestamp,Amount,CustomerID,MerchantID,Category\n1,2026-09-01 14:57:00,127.89,1018,2008,Food\n"
+        import io, json
+        mapping = {"reference": "TransactionID", "date": "Timestamp", "amount": "Amount", "category": "Category"}
+        r = self.owner.post("/api/uploads", headers=H, data={"file": (io.BytesIO(csv_bytes), "mine.csv"),
+                                                             "mapping": json.dumps(mapping)}).get_json()
+        self.assertEqual(r["rows_imported"], 1)
+        again = self.owner.post("/api/uploads", headers=H, data={"file": (io.BytesIO(csv_bytes), "mine.csv"),
+                                                                 "mapping": json.dumps(mapping)}).get_json()
+        self.assertEqual(again["rows_skipped_already_imported"], 1)  # the same row twice is still skipped
+
     def test_team_roles(self):
         self.load_demo()
         self.owner.post("/team", data={"action": "add", "full_name": "Ben", "email": "ben@example.com",

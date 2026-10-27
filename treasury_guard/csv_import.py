@@ -223,12 +223,18 @@ def import_csv(conn, business_id, filename, file_bytes, mapping):
             f"{errors[0]['line']}: {'; '.join(errors[0]['problems'])}."
         )
 
-    # Skip rows whose reference number was already imported for this business.
-    existing = {r[0] for r in conn.execute(
-        "SELECT reference FROM transactions WHERE business_id = ? AND reference IS NOT NULL", (business_id,)
+    # Skip rows already imported for this business: same reference number, date and amount.
+    # (A reference alone isn't enough: files often number rows 1, 2, 3... so different files reuse them.)
+    existing = {tuple(r) for r in conn.execute(
+        "SELECT reference, occurred_at, amount FROM transactions WHERE business_id = ? AND reference IS NOT NULL",
+        (business_id,)
     )}
-    already = [t for t in transactions if t["reference"] and t["reference"] in existing]
-    new = [t for t in transactions if not (t["reference"] and t["reference"] in existing)]
+
+    def seen(t):
+        return bool(t["reference"]) and (t["reference"], t["occurred_at"], t["amount"]) in existing
+
+    already = [t for t in transactions if seen(t)]
+    new = [t for t in transactions if not seen(t)]
 
     upload_id = conn.execute(
         """INSERT INTO uploads (business_id, filename, uploaded_at, rows_total, rows_imported, rows_skipped,

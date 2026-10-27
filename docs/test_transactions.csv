@@ -1,0 +1,216 @@
+Date,Amount,Type,Payee,Merchant,Category,Reference,Description
+2026-09-01 10:15,3669.63,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10002,Stock delivery
+2026-09-01 11:43,705.50,Payment,Ministop,Ministop,Food,OR-10003,Staff lunch
+2026-09-01 20:40,8779.32,Income,Daily sales,POS,Sales,OR-10001,Store sales
+2026-09-02 12:32,601.51,Payment,Mang Inasal,Mang Inasal,Food,OR-10005,Staff lunch
+2026-09-02 20:02,8208.58,Income,Daily sales,POS,Sales,OR-10004,Store sales
+2026-09-03 11:22,2079.74,Payment,Shopee,Shopee,Online,OR-10010,Packaging and cups
+2026-09-03 11:37,3751.86,Payment,Golden Grains Trading,Golden Grains Trading,Inventory & supplies,OR-10007,Stock delivery
+2026-09-03 12:44,466.96,Payment,Jollibee,Jollibee,Food,OR-10008,Staff lunch
+2026-09-03 12:48,278.49,Payment,Grab,Grab,Transport,OR-10009,Delivery run
+2026-09-03 20:44,11814.59,Income,Daily sales,POS,Sales,OR-10006,Store sales
+2026-09-04 14:34,243.62,Payment,Jollibee,Jollibee,Food,OR-10012,Staff lunch
+2026-09-04 14:53,1620.14,Payment,Shopee,Shopee,Online,OR-10013,Packaging and cups
+2026-09-04 20:38,9851.65,Income,Daily sales,POS,Sales,OR-10011,Store sales
+2026-09-05 09:23,25000.00,Payment,Mrs. Santos (landlord),Bank transfer,Rent,OR-10019,Monthly rent
+2026-09-05 09:45,3208.67,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10015,Stock delivery
+2026-09-05 12:49,367.04,Payment,Ministop,Ministop,Food,OR-10016,Staff lunch
+2026-09-05 12:55,146.56,Payment,Grab,Grab,Transport,OR-10017,Delivery run
+2026-09-05 20:53,1066.15,Payment,Shopee,Shopee,Online,OR-10018,Packaging and cups
+2026-09-05 20:56,14031.95,Income,Daily sales,POS,Sales,OR-10014,Store sales
+2026-09-06 11:38,626.23,Payment,Chowking,Chowking,Food,OR-10021,Staff lunch
+2026-09-06 17:24,866.89,Payment,Shopee,Shopee,Online,OR-10022,Packaging and cups
+2026-09-06 20:22,9466.55,Income,Daily sales,POS,Sales,OR-10020,Store sales
+2026-09-07 09:43,3972.85,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10024,Stock delivery
+2026-09-07 12:52,174.08,Payment,Jollibee,Jollibee,Food,OR-10025,Staff lunch
+2026-09-07 13:04,208.15,Payment,Grab,Grab,Transport,OR-10026,Delivery run
+2026-09-07 20:59,12480.00,Income,Daily sales,POS,Sales,OR-10023,Store sales
+2026-09-08 12:15,1864.48,Payment,Shopee,Shopee,Online,OR-10029,Packaging and cups
+2026-09-08 14:25,813.51,Payment,Mang Inasal,Mang Inasal,Food,OR-10028,Staff lunch
+2026-09-08 20:56,13025.40,Income,Daily sales,POS,Sales,OR-10027,Store sales
+2026-09-09 09:55,151.40,Payment,Grab,Grab,Transport,OR-10033,Delivery run
+2026-09-09 11:57,4750.60,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10031,Stock delivery
+2026-09-09 12:08,532.14,Payment,Chowking,Chowking,Food,OR-10032,Staff lunch
+2026-09-09 20:34,9839.19,Income,Daily sales,POS,Sales,OR-10030,Store sales
+2026-09-10 10:00,936.06,Payment,Maynilad,Maynilad,Utilities,OR-10037,Water
+2026-09-10 10:07,1999.00,Payment,PLDT,PLDT,Utilities,OR-10038,Internet
+2026-09-10 10:35,4802.55,Payment,Meralco,Meralco,Utilities,OR-10036,Electricity
+2026-09-10 11:24,436.21,Payment,Greenwich,Greenwich,Food,OR-10035,Staff lunch
+2026-09-10 20:50,12763.37,Income,Daily sales,POS,Sales,OR-10034,Store sales
+2026-09-11 10:07,1875.05,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10040,Stock delivery
+2026-09-11 14:00,865.36,Payment,Mang Inasal,Mang Inasal,Food,OR-10041,Staff lunch
+2026-09-11 18:48,675.17,Payment,Shopee,Shopee,Online,OR-10042,Packaging and cups
+2026-09-11 20:43,14193.52,Income,Daily sales,POS,Sales,OR-10039,Store sales
+2026-09-12 12:34,2302.35,Payment,Shopee,Shopee,Online,OR-10045,Packaging and cups
+2026-09-12 13:53,629.21,Payment,Ministop,Ministop,Food,OR-10044,Staff lunch
+2026-09-12 20:58,8744.88,Income,Daily sales,POS,Sales,OR-10043,Store sales
+2026-09-13 10:31,2587.65,Payment,Golden Grains Trading,Golden Grains Trading,Inventory & supplies,OR-10047,Stock delivery
+2026-09-13 13:15,193.44,Payment,Chowking,Chowking,Food,OR-10048,Staff lunch
+2026-09-13 20:59,11712.48,Income,Daily sales,POS,Sales,OR-10046,Store sales
+2026-09-14 12:08,644.81,Payment,Jollibee,Jollibee,Food,OR-10050,Staff lunch
+2026-09-14 18:55,1573.85,Payment,Shopee,Shopee,Online,OR-10051,Packaging and cups
+2026-09-14 20:05,13123.35,Income,Daily sales,POS,Sales,OR-10049,Store sales
+2026-09-15 09:45,3935.15,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10053,Stock delivery
+2026-09-15 11:21,344.17,Payment,Shopee,Shopee,Online,OR-10055,Packaging and cups
+2026-09-15 13:28,824.71,Payment,Ministop,Ministop,Food,OR-10054,Staff lunch
+2026-09-15 16:14,8507.19,Payment,Maria Reyes,GCash,Payroll,OR-10057,Half-month salary
+2026-09-15 16:35,8730.11,Payment,Juan Dela Cruz,GCash,Payroll,OR-10056,Half-month salary
+2026-09-15 16:45,9131.10,Payment,Pedro Bautista,GCash,Payroll,OR-10058,Half-month salary
+2026-09-15 20:13,14502.39,Income,Daily sales,POS,Sales,OR-10052,Store sales
+2026-09-16 13:04,535.62,Payment,Jollibee,Jollibee,Food,OR-10060,Staff lunch
+2026-09-16 16:13,391.97,Payment,Grab,Grab,Transport,OR-10061,Delivery run
+2026-09-16 20:14,8471.80,Income,Daily sales,POS,Sales,OR-10059,Store sales
+2026-09-17 09:50,2287.84,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10063,Stock delivery
+2026-09-17 12:06,222.70,Payment,7-Eleven,7-Eleven,Food,OR-10064,Staff lunch
+2026-09-17 20:56,11997.30,Income,Daily sales,POS,Sales,OR-10062,Store sales
+2026-09-18 10:15,197.29,Payment,Grab,Grab,Transport,OR-10067,Delivery run
+2026-09-18 11:03,451.97,Payment,Jollibee,Jollibee,Food,OR-10066,Staff lunch
+2026-09-18 20:29,14046.86,Income,Daily sales,POS,Sales,OR-10065,Store sales
+2026-09-19 11:15,3211.32,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10069,Stock delivery
+2026-09-19 14:51,796.01,Payment,Jollibee,Jollibee,Food,OR-10070,Staff lunch
+2026-09-19 18:53,330.99,Payment,Shopee,Shopee,Online,OR-10071,Packaging and cups
+2026-09-19 20:08,10953.17,Income,Daily sales,POS,Sales,OR-10068,Store sales
+2026-09-20 12:26,514.23,Payment,Mang Inasal,Mang Inasal,Food,OR-10073,Staff lunch
+2026-09-20 15:57,122.84,Payment,Grab,Grab,Transport,OR-10074,Delivery run
+2026-09-20 20:05,14484.57,Income,Daily sales,POS,Sales,OR-10072,Store sales
+2026-09-21 09:37,502.01,Payment,Grab,Grab,Transport,OR-10078,Delivery run
+2026-09-21 10:27,2802.16,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10076,Stock delivery
+2026-09-21 14:09,292.42,Payment,Ministop,Ministop,Food,OR-10077,Staff lunch
+2026-09-21 15:03,405.30,Payment,Shopee,Shopee,Online,OR-10079,Packaging and cups
+2026-09-21 20:24,9856.42,Income,Daily sales,POS,Sales,OR-10075,Store sales
+2026-09-22 11:04,423.22,Payment,Grab,Grab,Transport,OR-10082,Delivery run
+2026-09-22 12:03,870.58,Payment,Greenwich,Greenwich,Food,OR-10081,Staff lunch
+2026-09-22 20:30,11519.95,Income,Daily sales,POS,Sales,OR-10080,Store sales
+2026-09-23 09:37,4783.56,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10084,Stock delivery
+2026-09-23 11:26,643.03,Payment,Greenwich,Greenwich,Food,OR-10085,Staff lunch
+2026-09-23 20:15,10826.43,Income,Daily sales,POS,Sales,OR-10083,Store sales
+2026-09-24 13:15,349.21,Payment,Ministop,Ministop,Food,OR-10087,Staff lunch
+2026-09-24 13:29,267.06,Payment,Grab,Grab,Transport,OR-10088,Delivery run
+2026-09-24 20:16,9429.81,Income,Daily sales,POS,Sales,OR-10086,Store sales
+2026-09-25 08:04,4612.90,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10090,Stock delivery
+2026-09-25 13:08,849.94,Payment,Greenwich,Greenwich,Food,OR-10091,Staff lunch
+2026-09-25 20:04,8065.21,Income,Daily sales,POS,Sales,OR-10089,Store sales
+2026-09-26 12:00,2023.14,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10208,Team lunch
+2026-09-26 12:07,2160.64,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10209,Team lunch
+2026-09-26 12:14,2400.38,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10210,Team lunch
+2026-09-26 12:21,2255.88,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10211,Team lunch
+2026-09-26 12:28,2334.55,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10212,Team lunch
+2026-09-26 12:35,2069.12,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10213,Team lunch
+2026-09-26 12:42,2195.45,Payment,Max's Restaurant,Max's Restaurant,Food,OR-10214,Team lunch
+2026-09-26 13:39,887.89,Payment,7-Eleven,7-Eleven,Food,OR-10093,Staff lunch
+2026-09-26 20:23,9994.91,Income,Daily sales,POS,Sales,OR-10092,Store sales
+2026-09-27 08:56,1508.87,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10095,Stock delivery
+2026-09-27 11:47,564.92,Payment,Jollibee,Jollibee,Food,OR-10096,Staff lunch
+2026-09-27 12:45,282.01,Payment,Grab,Grab,Transport,OR-10097,Delivery run
+2026-09-27 20:42,13719.73,Income,Daily sales,POS,Sales,OR-10094,Store sales
+2026-09-28 12:40,2357.58,Payment,Shopee,Shopee,Online,OR-10101,Packaging and cups
+2026-09-28 13:57,831.12,Payment,7-Eleven,7-Eleven,Food,OR-10099,Staff lunch
+2026-09-28 15:53,244.94,Payment,Grab,Grab,Transport,OR-10100,Delivery run
+2026-09-28 20:54,9847.89,Income,Daily sales,POS,Sales,OR-10098,Store sales
+2026-09-29 11:35,3029.01,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10103,Stock delivery
+2026-09-29 12:34,177.02,Payment,Jollibee,Jollibee,Food,OR-10104,Staff lunch
+2026-09-29 20:10,13188.62,Income,Daily sales,POS,Sales,OR-10102,Store sales
+2026-09-30 13:57,849.82,Payment,Chowking,Chowking,Food,OR-10106,Staff lunch
+2026-09-30 15:13,1732.34,Payment,Shopee,Shopee,Online,OR-10107,Packaging and cups
+2026-09-30 16:42,8602.79,Payment,Juan Dela Cruz,GCash,Payroll,OR-10108,Half-month salary
+2026-09-30 16:49,9059.88,Payment,Maria Reyes,GCash,Payroll,OR-10109,Half-month salary
+2026-09-30 16:55,8906.38,Payment,Pedro Bautista,GCash,Payroll,OR-10110,Half-month salary
+2026-09-30 20:27,8892.12,Income,Daily sales,POS,Sales,OR-10105,Store sales
+2026-10-01 09:51,6148.47,Payment,Golden Grains Trading,Golden Grains Trading,Inventory & supplies,OR-10112,Stock delivery
+2026-10-01 11:11,702.42,Payment,7-Eleven,7-Eleven,Food,OR-10113,Staff lunch
+2026-10-01 15:51,465.15,Payment,Grab,Grab,Transport,OR-10114,Delivery run
+2026-10-01 20:39,13246.34,Income,Daily sales,POS,Sales,OR-10111,Store sales
+2026-10-02 11:24,804.13,Payment,Ministop,Ministop,Food,OR-10116,Staff lunch
+2026-10-02 17:22,940.90,Payment,Shopee,Shopee,Online,OR-10117,Packaging and cups
+2026-10-02 20:15,9867.64,Income,Daily sales,POS,Sales,OR-10115,Store sales
+2026-10-03 08:42,3369.08,Payment,Golden Grains Trading,Golden Grains Trading,Inventory & supplies,OR-10119,Stock delivery
+2026-10-03 13:55,202.07,Payment,Chowking,Chowking,Food,OR-10120,Staff lunch
+2026-10-03 20:50,14099.26,Income,Daily sales,POS,Sales,OR-10118,Store sales
+2026-10-04 13:01,236.51,Payment,Greenwich,Greenwich,Food,OR-10122,Staff lunch
+2026-10-04 14:02,527.65,Payment,Shopee,Shopee,Online,OR-10123,Packaging and cups
+2026-10-04 20:32,10797.75,Income,Daily sales,POS,Sales,OR-10121,Store sales
+2026-10-05 09:43,25000.00,Payment,Mrs. Santos (landlord),Bank transfer,Rent,OR-10128,Monthly rent
+2026-10-05 11:38,3463.74,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10125,Stock delivery
+2026-10-05 14:57,582.44,Payment,Jollibee,Jollibee,Food,OR-10126,Staff lunch
+2026-10-05 15:00,381.16,Payment,Grab,Grab,Transport,OR-10127,Delivery run
+2026-10-05 20:27,10419.81,Income,Daily sales,POS,Sales,OR-10124,Store sales
+2026-10-06 12:23,473.47,Payment,Ministop,Ministop,Food,OR-10130,Staff lunch
+2026-10-06 20:46,14581.84,Income,Daily sales,POS,Sales,OR-10129,Store sales
+2026-10-07 10:32,3891.78,Payment,Golden Grains Trading,Golden Grains Trading,Inventory & supplies,OR-10132,Stock delivery
+2026-10-07 13:25,672.91,Payment,7-Eleven,7-Eleven,Food,OR-10133,Staff lunch
+2026-10-07 20:24,1722.37,Payment,Shopee,Shopee,Online,OR-10134,Packaging and cups
+2026-10-07 20:39,10197.41,Income,Daily sales,POS,Sales,OR-10131,Store sales
+2026-10-08 09:05,6420.00,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10198,Stock delivery
+2026-10-08 11:10,6420.00,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10199,Stock delivery
+2026-10-08 13:13,330.74,Payment,Grab,Grab,Transport,OR-10137,Delivery run
+2026-10-08 13:25,560.95,Payment,Greenwich,Greenwich,Food,OR-10136,Staff lunch
+2026-10-08 20:57,9218.19,Income,Daily sales,POS,Sales,OR-10135,Store sales
+2026-10-09 11:43,1691.51,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10139,Stock delivery
+2026-10-09 12:42,213.60,Payment,7-Eleven,7-Eleven,Food,OR-10140,Staff lunch
+2026-10-09 20:41,10255.74,Income,Daily sales,POS,Sales,OR-10138,Store sales
+2026-10-10 09:15,641.00,Payment,Grab,Grab,Transport,OR-10143,Delivery run
+2026-10-10 10:26,977.23,Payment,Maynilad,Maynilad,Utilities,OR-10145,Water
+2026-10-10 10:30,45320.00,Payment,Meralco,Meralco,Utilities,OR-10215,Electricity
+2026-10-10 10:36,1999.00,Payment,PLDT,PLDT,Utilities,OR-10146,Internet
+2026-10-10 10:49,4250.98,Payment,Meralco,Meralco,Utilities,OR-10144,Electricity
+2026-10-10 13:14,754.92,Payment,Mang Inasal,Mang Inasal,Food,OR-10142,Staff lunch
+2026-10-10 20:21,8653.71,Income,Daily sales,POS,Sales,OR-10141,Store sales
+2026-10-11 11:25,1761.16,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10148,Stock delivery
+2026-10-11 11:57,713.22,Payment,Ministop,Ministop,Food,OR-10149,Staff lunch
+2026-10-11 16:14,669.36,Payment,Shopee,Shopee,Online,OR-10150,Packaging and cups
+2026-10-11 20:12,13028.42,Income,Daily sales,POS,Sales,OR-10147,Store sales
+2026-10-12 12:58,786.25,Payment,Jollibee,Jollibee,Food,OR-10152,Staff lunch
+2026-10-12 20:44,11625.70,Income,Daily sales,POS,Sales,OR-10151,Store sales
+2026-10-13 10:48,5674.28,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10154,Stock delivery
+2026-10-13 14:53,830.14,Payment,Greenwich,Greenwich,Food,OR-10155,Staff lunch
+2026-10-13 17:28,844.30,Payment,Shopee,Shopee,Online,OR-10156,Packaging and cups
+2026-10-13 20:42,11717.92,Income,Daily sales,POS,Sales,OR-10153,Store sales
+2026-10-14 14:40,329.43,Payment,Chowking,Chowking,Food,OR-10158,Staff lunch
+2026-10-14 20:15,13879.04,Income,Daily sales,POS,Sales,OR-10157,Store sales
+2026-10-15 02:14,148500.00,Payment,JM Equipment Sales,Bank transfer,Inventory & supplies,OR-10200,Espresso machine
+2026-10-15 08:08,1546.91,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10160,Stock delivery
+2026-10-15 12:45,310.46,Payment,7-Eleven,7-Eleven,Food,OR-10161,Staff lunch
+2026-10-15 16:13,9332.89,Payment,Maria Reyes,GCash,Payroll,OR-10163,Half-month salary
+2026-10-15 16:24,9404.84,Payment,Pedro Bautista,GCash,Payroll,OR-10164,Half-month salary
+2026-10-15 16:29,8915.77,Payment,Juan Dela Cruz,GCash,Payroll,OR-10162,Half-month salary
+2026-10-15 20:15,9902.01,Income,Daily sales,POS,Sales,OR-10159,Store sales
+2026-10-16 14:30,154.42,Payment,Jollibee,Jollibee,Food,OR-10166,Staff lunch
+2026-10-16 20:37,14622.43,Income,Daily sales,POS,Sales,OR-10165,Store sales
+2026-10-17 09:31,1704.67,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10168,Stock delivery
+2026-10-17 14:01,441.64,Payment,7-Eleven,7-Eleven,Food,OR-10169,Staff lunch
+2026-10-17 20:54,14241.49,Income,Daily sales,POS,Sales,OR-10167,Store sales
+2026-10-18 12:39,550.59,Payment,7-Eleven,7-Eleven,Food,OR-10171,Staff lunch
+2026-10-18 20:46,9155.31,Income,Daily sales,POS,Sales,OR-10170,Store sales
+2026-10-19 03:02,0.50,Payment,XYZ Online Services,XYZ Online,Online,OR-10201,
+2026-10-19 03:04,1.00,Payment,XYZ Online Services,XYZ Online,Online,OR-10202,
+2026-10-19 11:08,5600.55,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10173,Stock delivery
+2026-10-19 11:16,434.33,Payment,Mang Inasal,Mang Inasal,Food,OR-10174,Staff lunch
+2026-10-19 14:21,516.29,Payment,Grab,Grab,Transport,OR-10175,Delivery run
+2026-10-19 20:42,8189.71,Income,Daily sales,POS,Sales,OR-10172,Store sales
+2026-10-20 13:53,211.43,Payment,7-Eleven,7-Eleven,Food,OR-10177,Staff lunch
+2026-10-20 17:03,649.95,Payment,Grab,Grab,Transport,OR-10178,Delivery run
+2026-10-20 20:48,14658.43,Income,Daily sales,POS,Sales,OR-10176,Store sales
+2026-10-20 23:05,4999.00,Payment,QuickPay Merchant 88,QuickPay,Online,OR-10203,
+2026-10-20 23:14,4996.00,Payment,QuickPay Merchant 88,QuickPay,Online,OR-10204,
+2026-10-20 23:23,4993.00,Payment,QuickPay Merchant 88,QuickPay,Online,OR-10205,
+2026-10-20 23:32,4990.00,Payment,QuickPay Merchant 88,QuickPay,Online,OR-10206,
+2026-10-20 23:41,4987.00,Payment,QuickPay Merchant 88,QuickPay,Online,OR-10207,
+2026-10-21 08:48,3093.09,Payment,Kape Barako Supply Co.,Kape Barako Supply Co.,Inventory & supplies,OR-10180,Stock delivery
+2026-10-21 11:30,464.90,Payment,Grab,Grab,Transport,OR-10182,Delivery run
+2026-10-21 12:53,165.29,Payment,Mang Inasal,Mang Inasal,Food,OR-10181,Staff lunch
+2026-10-21 20:41,8480.33,Income,Daily sales,POS,Sales,OR-10179,Store sales
+2026-10-22 13:10,604.42,Payment,Chowking,Chowking,Food,OR-10184,Staff lunch
+2026-10-22 20:13,11255.24,Income,Daily sales,POS,Sales,OR-10183,Store sales
+2026-10-23 08:37,1259.06,Payment,Bayan Fresh Produce,Bayan Fresh Produce,Inventory & supplies,OR-10186,Stock delivery
+2026-10-23 12:06,480.43,Payment,Grab,Grab,Transport,OR-10188,Delivery run
+2026-10-23 14:25,856.10,Payment,Chowking,Chowking,Food,OR-10187,Staff lunch
+2026-10-23 20:49,13735.11,Income,Daily sales,POS,Sales,OR-10185,Store sales
+2026-10-24 11:22,549.56,Payment,Jollibee,Jollibee,Food,OR-10190,Staff lunch
+2026-10-24 20:21,326.57,Payment,Shopee,Shopee,Online,OR-10191,Packaging and cups
+2026-10-24 20:43,12202.88,Income,Daily sales,POS,Sales,OR-10189,Store sales
+2026-10-25 11:23,5360.13,Payment,Golden Grains Trading,Golden Grains Trading,Inventory & supplies,OR-10193,Stock delivery
+2026-10-25 12:27,282.10,Payment,7-Eleven,7-Eleven,Food,OR-10194,Staff lunch
+2026-10-25 20:26,13756.32,Income,Daily sales,POS,Sales,OR-10192,Store sales
+2026-10-26 13:53,2262.71,Payment,Shopee,Shopee,Online,OR-10197,Packaging and cups
+2026-10-26 14:29,476.68,Payment,Greenwich,Greenwich,Food,OR-10196,Staff lunch
+2026-10-26 20:39,13657.39,Income,Daily sales,POS,Sales,OR-10195,Store sales
