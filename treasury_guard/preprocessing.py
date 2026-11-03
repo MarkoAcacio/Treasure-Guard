@@ -17,7 +17,7 @@ history (its usual amount, the same category, the same payee) instead of using r
 amounts, so a model trained on US card data works for a Philippine business of any size.
 """
 import math
-from bisect import bisect_left
+from bisect import bisect_left, insort
 from collections import defaultdict
 from datetime import datetime
 from statistics import median, quantiles
@@ -102,8 +102,22 @@ BASE_FEATURES = (
     "change_from_last_payment",  # |log(amount / previous amount to the same payee)|
     "payments_same_payee_24h",   # log(1 + payments to the same payee in the 24 hours before)
     "burst_vs_usual_day",        # log(1 + payments in the last 24h) - log(1 + usual payments per day)
+    "new_payee",                 # 1 if this is the first payment to this payee, else 0
+    "amount_vs_payee",           # log(amount / median of earlier payments to the same payee); 0 for a new payee
+    "day_of_week",               # 0 = Monday ... 6 = Sunday
+    # Last 7 days / 24 hours (fraud tends to come in bursts over a few days)
+    "spend_7d_vs_usual",         # log(spending in the last 7 days, this payment included / usual 7-day spending)
+    "payments_7d_vs_usual",      # log(1 + payments in the 7 days before) - log(1 + usual payments per 7 days)
+    "new_payees_24h",            # log(1 + payments to first-time payees in the 24 hours before)
 )
-TIME_FEATURES = ("hour_sin", "hour_cos")  # time of day, only when the data has times
+TIME_FEATURES = (
+    "hour_sin", "hour_cos",      # time of day, only when the data has times
+    "night_payments_7d",         # log(1 + payments between 10 PM and 5 AM in the 7 days before)
+)
+NIGHT_HOURS = {22, 23, 0, 1, 2, 3, 4}
+WEEK_SECONDS = 7 * 86400
+# In a business's first 7 days there is no earlier week to compare with (every payee is new, recent
+# spending looks tiny), so the 7-day and new-payee features are set to neutral values until then.
 GAP_CAP_HOURS = 72
 MIN_CATEGORY_SIZE = 5
 _EPOCH = datetime(1970, 1, 1)
@@ -151,9 +165,12 @@ def build_features(transactions, use_time, fill_change):
     times = [_seconds(t["timestamp"]) for t in transactions]
     span_days = max((times[-1] - times[0]) / 86400, 1.0)
     usual_per_day = len(transactions) / span_days
+    usual_week_spend = sum(t["amount"] for t in transactions) / span_days * 7
+    cum_amount, cum_new, cum_night = [0.0], [0], [0]   # running totals, for 7-day and 24-hour windows
 
     last_payment = {}                  # payee -> (time, amount)
     payee_times = defaultdict(list)    # payee -> sorted times
+    payee_logs = defaultdict(list)     # payee -> sorted log amounts of earlier payments
     rows, context = [], []
     for i, (t, lg, now) in enumerate(zip(transactions, logs, times)):
         payee = t["counterparty"] or t["merchant"] or "_unknown"
@@ -166,8 +183,15 @@ def build_features(transactions, use_time, fill_change):
         else:
             gap, change, same_payee_24h = GAP_CAP_HOURS, fill_change, 0
         business_24h = i - bisect_left(times, cutoff, 0, i)
+        week_start = bisect_left(times, now - WEEK_SECONDS, 0, i)
+        day_start = bisect_left(times, cutoff, 0, i)
+        spend_7d = cum_amount[i] - cum_amount[week_start] + t["amount"]
+        earlier = payee_logs[payee]
+        new_payee = not earlier
+        payee_mid = None if new_payee else median(earlier)
         last_payment[payee] = (now, t["amount"])
         payee_times[payee].append(now)
+        insort(earlier, lg)
 
         mid, spread = category_scale[t["category"]]
         row = [
@@ -177,11 +201,25 @@ def build_features(transactions, use_time, fill_change):
             change,
             math.log1p(same_payee_24h),
             math.log1p(business_24h) - math.log1p(usual_per_day),
+            1.0 if new_payee else 0.0,
+            0.0 if new_payee else lg - payee_mid,
+            float(t["timestamp"].weekday()),
+            math.log(spend_7d / usual_week_spend),
+            math.log1p(i - week_start) - math.log1p(usual_per_day * 7),
+            math.log1p(cum_new[i] - cum_new[day_start]),
         ]
         if use_time:
             hour = t["timestamp"].hour + t["timestamp"].minute / 60
-            row += [math.sin(2 * math.pi * hour / 24), math.cos(2 * math.pi * hour / 24)]
+            row += [math.sin(2 * math.pi * hour / 24), math.cos(2 * math.pi * hour / 24),
+                    math.log1p(cum_night[i] - cum_night[week_start])]
+        if now - times[0] < WEEK_SECONDS:  # not enough history yet: neutral values
+            row[9:12] = [0.0, 0.0, 0.0]
+            if use_time:
+                row[14] = 0.0
         rows.append(row)
+        cum_amount.append(cum_amount[-1] + t["amount"])
+        cum_new.append(cum_new[-1] + (1 if new_payee else 0))
+        cum_night.append(cum_night[-1] + (1 if t["timestamp"].hour in NIGHT_HOURS else 0))
         context.append({
             "gap_hours": None if gap == GAP_CAP_HOURS else gap,
             "same_payee_24h": same_payee_24h,
@@ -189,5 +227,11 @@ def build_features(transactions, use_time, fill_change):
             "usual_per_day": usual_per_day,
             "usual_amount": math.exp(usual),
             "category_typical": math.exp(mid),
+            "new_payee": new_payee,
+            "payee_typical": None if new_payee else math.exp(payee_mid),
+            "spend_7d": spend_7d,
+            "usual_week_spend": usual_week_spend,
+            "new_payees_24h": cum_new[i] - cum_new[day_start],
+            "night_7d": cum_night[i] - cum_night[week_start],
         })
     return rows, context

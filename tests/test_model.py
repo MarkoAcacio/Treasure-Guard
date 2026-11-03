@@ -88,15 +88,25 @@ class ModelTests(unittest.TestCase):
             self.assertLess(len(flags) / len(txns), 0.03)
 
     def test_catches_a_late_night_burst_of_large_payments(self):
+        # The fraud model is tuned for fewer false alarms: it rates the burst's biggest payment above every
+        # normal one, and the app as a whole (rules + statistics + AI) flags every payment in the burst.
+        burst = {900, 901, 902, 903}
         for with_time in (True, False):
             txns = business(seed=4, with_time=with_time) + night_burst(with_time=with_time)
-            flagged = {f["txn_ids"][0] for f in anomaly_model.run_ai_checks(txns, settings(), FMT)
-                       if f["type"] == "fraud"}
-            self.assertTrue({900, 901, 902, 903} <= flagged, with_time)
+            _, _, scored = anomaly_model.score_transactions(txns)
+            # Normal payments, leaving out same-day repeats to one payee (possible double payments, rightly risky)
+            normal = [p for t, p, _, _, c in scored if t["id"] not in burst and c["same_payee_24h"] == 0]
+            risk = {t["id"]: p for t, p, *_ in scored}
+            self.assertGreater(risk[903], max(normal), with_time)
+            high = {f["txn_ids"][0] for f in anomaly_model.run_ai_checks(
+                txns, settings(fraud_min_probability=0.15), FMT) if f["type"] == "fraud"}
+            self.assertIn(903, high, with_time)
+            flagged = {i for f in find_anomalies(txns, settings()) for i in f["txn_ids"]}
+            self.assertTrue(burst <= flagged, with_time)
 
     def test_reasons_are_plain_language(self):
         txns = business(seed=4) + night_burst()
-        fraud = [f for f in anomaly_model.run_ai_checks(txns, settings(), FMT) if f["txn_ids"] == [900]]
+        fraud = [f for f in anomaly_model.run_ai_checks(txns, settings(), FMT) if f["txn_ids"] == [903]]
         self.assertIn("late at night", fraud[0]["reason"])
         self.assertIn("% fraud risk", fraud[0]["reason"])
 

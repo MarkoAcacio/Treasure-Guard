@@ -24,7 +24,7 @@ DEFAULT_SETTINGS = {
     # AI checks (models trained on the Kaggle credit card fraud dataset; see anomaly_model.py)
     "fraud_model_enabled": True,
     "fraud_min_probability": None, # flag at or above this fraud risk; None = the model's recommended level
-    "ml_enabled": True,
+    "ml_enabled": False,           # off by default: alone it raised far more false alarms than real issues
     "ml_percentile": 99.0,         # flag payments more unusual than this % of the business's own payments
     "sensitivity": "medium",       # low | medium | high | custom
 }

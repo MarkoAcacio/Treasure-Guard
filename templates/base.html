@@ -50,17 +50,20 @@
 {% if current_business %}
 <div class="shell" id="shell">
   <header class="topbar">
-    <a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">{{ ui.icon('shield') }}</span><b>Treasury Guard</b></a>
+    <a class="brand" href="{{ url_for('upload_page' if is_employee else 'dashboard') }}"><span class="brand-mark">{{ ui.icon('shield') }}</span><b>Treasury Guard</b></a>
     <button class="btn btn-ghost" type="button" id="menu-btn" aria-controls="sidebar" aria-expanded="false" aria-label="Open menu">{{ ui.icon('menu') }}</button>
   </header>
   <button class="scrim" type="button" id="scrim" aria-label="Close menu" tabindex="-1"></button>
 
   <aside class="sidebar" id="sidebar">
-    <a class="brand" href="{{ url_for('dashboard') }}">
+    <a class="brand" href="{{ url_for('upload_page' if is_employee else 'dashboard') }}">
       <span class="brand-mark">{{ ui.icon('shield') }}</span>
       <span><b>Treasury Guard</b><small>{{ current_business.name }}</small></span>
     </a>
     <nav class="nav" aria-label="Main">
+      {% if is_employee %}
+      {{ nav_link('upload_page', 'upload', 'Upload files') }}
+      {% else %}
       {{ nav_link('dashboard', 'home', 'Overview') }}
       {{ nav_link('flags_page', 'flag', 'Flagged payments') }}
       {{ nav_link('risk_page', 'gauge', 'Combined risk') }}
@@ -68,12 +71,13 @@
       {{ nav_link('transactions_page', 'list', 'Transactions') }}
       {{ nav_link('reports_page', 'report', 'Reports') }}
       <div class="nav-label">Setup</div>
-      {% if can('owner') %}{{ nav_link('upload_page', 'upload', 'Upload CSV') }}{% endif %}
+      {% if can_upload %}{{ nav_link('upload_page', 'upload', 'Upload CSV') }}{% endif %}
       {{ nav_link('rules', 'sliders', 'Detection settings') }}
       {{ nav_link('model_page', 'cpu', 'AI models') }}
       {{ nav_link('business_page', 'building', 'Business profile') }}
       {{ nav_link('team_page', 'users', 'Team & roles') }}
       {{ nav_link('activity_page', 'history', 'Activity log') }}
+      {% endif %}
     </nav>
     <div class="sidebar-foot">
       <div><b>{{ current_user.full_name }}</b></div>

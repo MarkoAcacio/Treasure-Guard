@@ -1,7 +1,7 @@
 {
-  "model_version": 4,
+  "model_version": 6,
   "sklearn_version": "1.9.1",
-  "trained_at": "2026-10-27T00:54:52",
+  "trained_at": "2026-11-02T21:43:55",
   "models": {
     "isolation_forest": {
       "type": "IsolationForest",
@@ -16,13 +16,109 @@
     "fraud_classifier": {
       "type": "HistGradientBoostingClassifier",
       "parameters": {
-        "max_iter": 400,
-        "learning_rate": 0.08,
-        "max_leaf_nodes": 31,
-        "l2_regularization": 1.0,
-        "early_stopping": true,
-        "validation_fraction": 0.1,
-        "random_state": 42
+        "with_time": {
+          "max_iter": 1200,
+          "learning_rate": 0.03,
+          "max_leaf_nodes": 127,
+          "min_samples_leaf": 100,
+          "l2_regularization": 2.0,
+          "early_stopping": true,
+          "validation_fraction": 0.1,
+          "random_state": 42
+        },
+        "date_only": {
+          "max_iter": 1200,
+          "learning_rate": 0.03,
+          "max_leaf_nodes": 127,
+          "min_samples_leaf": 100,
+          "l2_regularization": 2.0,
+          "early_stopping": true,
+          "validation_fraction": 0.1,
+          "random_state": 42
+        }
+      },
+      "inputs": "features + Isolation Forest score",
+      "settings_search": {
+        "with_time": [
+          {
+            "parameters": {
+              "max_iter": 400,
+              "learning_rate": 0.08,
+              "max_leaf_nodes": 31,
+              "l2_regularization": 1.0,
+              "early_stopping": true,
+              "validation_fraction": 0.1,
+              "random_state": 42
+            },
+            "validation_pr_auc": 0.8648
+          },
+          {
+            "parameters": {
+              "max_iter": 800,
+              "learning_rate": 0.05,
+              "max_leaf_nodes": 63,
+              "min_samples_leaf": 50,
+              "l2_regularization": 1.0,
+              "early_stopping": true,
+              "validation_fraction": 0.1,
+              "random_state": 42
+            },
+            "validation_pr_auc": 0.8712
+          },
+          {
+            "parameters": {
+              "max_iter": 1200,
+              "learning_rate": 0.03,
+              "max_leaf_nodes": 127,
+              "min_samples_leaf": 100,
+              "l2_regularization": 2.0,
+              "early_stopping": true,
+              "validation_fraction": 0.1,
+              "random_state": 42
+            },
+            "validation_pr_auc": 0.8829
+          }
+        ],
+        "date_only": [
+          {
+            "parameters": {
+              "max_iter": 400,
+              "learning_rate": 0.08,
+              "max_leaf_nodes": 31,
+              "l2_regularization": 1.0,
+              "early_stopping": true,
+              "validation_fraction": 0.1,
+              "random_state": 42
+            },
+            "validation_pr_auc": 0.7964
+          },
+          {
+            "parameters": {
+              "max_iter": 800,
+              "learning_rate": 0.05,
+              "max_leaf_nodes": 63,
+              "min_samples_leaf": 50,
+              "l2_regularization": 1.0,
+              "early_stopping": true,
+              "validation_fraction": 0.1,
+              "random_state": 42
+            },
+            "validation_pr_auc": 0.808
+          },
+          {
+            "parameters": {
+              "max_iter": 1200,
+              "learning_rate": 0.03,
+              "max_leaf_nodes": 127,
+              "min_samples_leaf": 100,
+              "l2_regularization": 2.0,
+              "early_stopping": true,
+              "validation_fraction": 0.1,
+              "random_state": 42
+            },
+            "validation_pr_auc": 0.8156
+          }
+        ]
       },
       "uses_labels": true
     }
@@ -67,10 +163,17 @@
         "change_from_last_payment",
         "payments_same_payee_24h",
         "burst_vs_usual_day",
+        "new_payee",
+        "amount_vs_payee",
+        "day_of_week",
+        "spend_7d_vs_usual",
+        "payments_7d_vs_usual",
+        "new_payees_24h",
         "hour_sin",
-        "hour_cos"
+        "hour_cos",
+        "night_payments_7d"
       ],
-      "threshold": 0.3125308677179864,
+      "threshold": 0.30851076139542843,
       "feature_stats": {
         "amount_vs_usual": {
           "median": 0.0,
@@ -87,7 +190,7 @@
         "hours_since_same_payee": {
           "median": 4.290459441148391,
           "iqr": 1.0,
-          "min": 0.0016652793190612104,
+          "min": 0.0016652793190612106,
           "max": 4.290459441148391
         },
         "change_from_last_payment": {
@@ -100,13 +203,49 @@
           "median": 0.0,
           "iqr": 1.0,
           "min": 0.0,
-          "max": 1.0986122886681098
+          "max": 1.0986122886681096
         },
         "burst_vs_usual_day": {
           "median": 0.030555146049642934,
-          "iqr": 0.7200452312558158,
+          "iqr": 0.720045231255816,
           "min": -2.943805545624051,
           "max": 1.881673475629726
+        },
+        "new_payee": {
+          "median": 0.0,
+          "iqr": 1.0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "amount_vs_payee": {
+          "median": 0.0,
+          "iqr": 0.2764565683295368,
+          "min": -9.513659784981503,
+          "max": 9.477472181141536
+        },
+        "day_of_week": {
+          "median": 3.0,
+          "iqr": 4.0,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "spend_7d_vs_usual": {
+          "median": -0.03679197427421592,
+          "iqr": 0.6061216517823346,
+          "min": -6.2174127650348385,
+          "max": 3.6187670489824395
+        },
+        "payments_7d_vs_usual": {
+          "median": 0.0,
+          "iqr": 0.40127898672887374,
+          "min": -2.6833528344557167,
+          "max": 1.316444526308032
+        },
+        "new_payees_24h": {
+          "median": 0.6931471805599453,
+          "iqr": 1.0986122886681096,
+          "min": 0.0,
+          "max": 2.772588722239781
         },
         "hour_sin": {
           "median": -0.2714404498650743,
@@ -119,6 +258,12 @@
           "iqr": 1.4172651736101498,
           "min": -1.0,
           "max": 1.0
+        },
+        "night_payments_7d": {
+          "median": 1.9459101490553132,
+          "iqr": 0.6931471805599456,
+          "min": 0.0,
+          "max": 3.5263605246161616
         }
       }
     },
@@ -129,9 +274,15 @@
         "hours_since_same_payee",
         "change_from_last_payment",
         "payments_same_payee_24h",
-        "burst_vs_usual_day"
+        "burst_vs_usual_day",
+        "new_payee",
+        "amount_vs_payee",
+        "day_of_week",
+        "spend_7d_vs_usual",
+        "payments_7d_vs_usual",
+        "new_payees_24h"
       ],
-      "threshold": 0.23932797544233247,
+      "threshold": 0.3466655882333997,
       "feature_stats": {
         "amount_vs_usual": {
           "median": 0.0,
@@ -161,13 +312,49 @@
           "median": 0.0,
           "iqr": 1.0,
           "min": 0.0,
-          "max": 1.0986122886681098
+          "max": 1.0986122886681096
         },
         "burst_vs_usual_day": {
           "median": 0.3192105351133232,
-          "iqr": 0.6503690585471412,
+          "iqr": 0.6503690585471413,
           "min": -2.995732273553991,
           "max": 2.1674392741661697
+        },
+        "new_payee": {
+          "median": 0.0,
+          "iqr": 1.0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        "amount_vs_payee": {
+          "median": 0.0,
+          "iqr": 0.2764563259358894,
+          "min": -9.513659784981503,
+          "max": 9.477472181141536
+        },
+        "day_of_week": {
+          "median": 3.0,
+          "iqr": 4.0,
+          "min": 0.0,
+          "max": 6.0
+        },
+        "spend_7d_vs_usual": {
+          "median": 0.02940670893460411,
+          "iqr": 0.5959344085141122,
+          "min": -6.216517878839787,
+          "max": 3.619285958633121
+        },
+        "payments_7d_vs_usual": {
+          "median": 0.06842143365839126,
+          "iqr": 0.39314086824037897,
+          "min": -2.684262030127454,
+          "max": 1.3871357578880819
+        },
+        "new_payees_24h": {
+          "median": 0.6931471805599453,
+          "iqr": 1.0986122886681096,
+          "min": 0.0,
+          "max": 3.091042453358316
         }
       }
     }
@@ -177,30 +364,39 @@
       "test_rows": 555719,
       "test_fraud": 2145,
       "fraud_classifier": {
-        "roc_auc": 0.9732,
-        "pr_auc": 0.4819,
-        "threshold": 0.3125,
+        "roc_auc": 0.988,
+        "pr_auc": 0.6873,
+        "threshold": 0.3085,
         "at_threshold": {
-          "precision": 0.49,
-          "recall": 0.601,
-          "f1": 0.54,
-          "flagged": 2632,
-          "true_positives": 1289,
-          "false_positives": 1343,
-          "missed_fraud": 856
+          "precision": 0.503,
+          "recall": 0.717,
+          "f1": 0.591,
+          "flagged": 3058,
+          "true_positives": 1538,
+          "false_positives": 1520,
+          "missed_fraud": 607
+        },
+        "at_low_sensitivity": {
+          "precision": 0.633,
+          "recall": 0.633,
+          "f1": 0.633,
+          "flagged": 2145,
+          "true_positives": 1358,
+          "false_positives": 787,
+          "missed_fraud": 787
         }
       },
       "isolation_forest": {
-        "roc_auc": 0.8528,
-        "pr_auc": 0.0312,
+        "roc_auc": 0.8784,
+        "pr_auc": 0.0337,
         "at_97th_percentile_per_business": {
-          "precision": 0.039,
-          "recall": 0.297,
-          "f1": 0.069,
+          "precision": 0.038,
+          "recall": 0.287,
+          "f1": 0.067,
           "flagged": 16226,
-          "true_positives": 637,
-          "false_positives": 15589,
-          "missed_fraud": 1508
+          "true_positives": 615,
+          "false_positives": 15611,
+          "missed_fraud": 1530
         }
       },
       "baseline_rule_amount_top_1pct_per_business": {
@@ -213,43 +409,61 @@
         "missed_fraud": 1578
       },
       "combined_classifier_or_isolation_forest": {
-        "precision": 0.079,
-        "recall": 0.657,
-        "f1": 0.141,
-        "flagged": 17791,
-        "true_positives": 1410,
-        "false_positives": 16381,
-        "missed_fraud": 735
+        "precision": 0.088,
+        "recall": 0.758,
+        "f1": 0.158,
+        "flagged": 18452,
+        "true_positives": 1625,
+        "false_positives": 16827,
+        "missed_fraud": 520
+      },
+      "combined_classifier_or_supported_isolation_forest": {
+        "precision": 0.328,
+        "recall": 0.74,
+        "f1": 0.455,
+        "flagged": 4839,
+        "true_positives": 1588,
+        "false_positives": 3251,
+        "missed_fraud": 557
       }
     },
     "date_only": {
       "test_rows": 555719,
       "test_fraud": 2145,
       "fraud_classifier": {
-        "roc_auc": 0.9474,
-        "pr_auc": 0.3268,
-        "threshold": 0.2393,
+        "roc_auc": 0.9752,
+        "pr_auc": 0.5555,
+        "threshold": 0.3467,
         "at_threshold": {
-          "precision": 0.293,
-          "recall": 0.499,
-          "f1": 0.369,
-          "flagged": 3653,
-          "true_positives": 1071,
-          "false_positives": 2582,
-          "missed_fraud": 1074
+          "precision": 0.448,
+          "recall": 0.565,
+          "f1": 0.499,
+          "flagged": 2704,
+          "true_positives": 1211,
+          "false_positives": 1493,
+          "missed_fraud": 934
+        },
+        "at_low_sensitivity": {
+          "precision": 0.576,
+          "recall": 0.485,
+          "f1": 0.527,
+          "flagged": 1806,
+          "true_positives": 1041,
+          "false_positives": 765,
+          "missed_fraud": 1104
         }
       },
       "isolation_forest": {
         "roc_auc": 0.8687,
-        "pr_auc": 0.0335,
+        "pr_auc": 0.0315,
         "at_97th_percentile_per_business": {
-          "precision": 0.043,
-          "recall": 0.323,
-          "f1": 0.075,
+          "precision": 0.039,
+          "recall": 0.298,
+          "f1": 0.07,
           "flagged": 16226,
-          "true_positives": 692,
-          "false_positives": 15534,
-          "missed_fraud": 1453
+          "true_positives": 639,
+          "false_positives": 15587,
+          "missed_fraud": 1506
         }
       },
       "baseline_rule_amount_top_1pct_per_business": {
@@ -262,13 +476,22 @@
         "missed_fraud": 1578
       },
       "combined_classifier_or_isolation_forest": {
-        "precision": 0.072,
-        "recall": 0.618,
-        "f1": 0.129,
-        "flagged": 18352,
-        "true_positives": 1326,
-        "false_positives": 17026,
-        "missed_fraud": 819
+        "precision": 0.075,
+        "recall": 0.633,
+        "f1": 0.134,
+        "flagged": 18094,
+        "true_positives": 1357,
+        "false_positives": 16737,
+        "missed_fraud": 788
+      },
+      "combined_classifier_or_supported_isolation_forest": {
+        "precision": 0.28,
+        "recall": 0.611,
+        "f1": 0.384,
+        "flagged": 4685,
+        "true_positives": 1311,
+        "false_positives": 3374,
+        "missed_fraud": 834
       }
     }
   }

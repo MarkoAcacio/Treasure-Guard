@@ -44,5 +44,5 @@ def build_demo_csv():
     return out.getvalue().encode("utf-8")
 
 
-def load_demo_data(conn, business_id):
-    return import_csv(conn, business_id, DEMO_FILENAME, build_demo_csv(), DEMO_MAPPING)
+def load_demo_data(conn, business_id, uploaded_by=None):
+    return import_csv(conn, business_id, DEMO_FILENAME, build_demo_csv(), DEMO_MAPPING, uploaded_by)

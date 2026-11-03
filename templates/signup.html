@@ -1,11 +1,26 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Sign up{% endblock %}
 {% block auth %}
 <div class="card">
-  <h1>Create your business account</h1>
-  <p class="muted">Upload your transactions and Treasury Guard flags the ones worth a second look.</p>
+  <h1>Create your account</h1>
+  <p class="muted">Employees upload the business's transaction files. The owner reviews anything unusual.</p>
   {% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
-  <form method="post">
+  <form method="post" id="signup-form">
+    <fieldset class="account-type">
+      <legend>I am</legend>
+      <label class="type-option">
+        <input type="radio" name="account_type" value="owner" {% if account_type == 'owner' %}checked{% endif %}>
+        <span class="type-icon">{{ ui.icon('building') }}</span>
+        <span><b>Business owner</b><span class="hint">Admin. Sees the dashboard and reviews flagged payments.</span></span>
+      </label>
+      <label class="type-option">
+        <input type="radio" name="account_type" value="employee" {% if account_type == 'employee' %}checked{% endif %}>
+        <span class="type-icon">{{ ui.icon('upload') }}</span>
+        <span><b>Employee</b><span class="hint">Uploads transaction files for the owner to check.</span></span>
+      </label>
+    </fieldset>
+
     <div class="field"><label for="full_name">Your name</label>
       <input id="full_name" name="full_name" type="text" autocomplete="name" required value="{{ form.get('full_name', '') }}"></div>
     <div class="field"><label for="email">Email</label>
@@ -13,15 +28,46 @@
     <div class="field"><label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required aria-describedby="pw-hint">
       <span class="hint" id="pw-hint">At least 8 characters.</span></div>
-    <div class="field"><label for="business_name">Business name</label>
-      <input id="business_name" name="business_name" type="text" required value="{{ form.get('business_name', '') }}"></div>
-    <div class="field"><label for="business_type">Business type</label>
-      <select id="business_type" name="business_type">
-        {% for t in business_types %}<option value="{{ t }}" {% if form.get('business_type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
-      </select></div>
-    <label class="check" style="margin-bottom:16px"><input type="checkbox" name="load_demo" value="1"> Start with sample transactions so I can look around</label>
-    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+
+    <div data-for="owner" {% if account_type != 'owner' %}hidden{% endif %}>
+      <div class="field"><label for="business_name">Business name</label>
+        <input id="business_name" name="business_name" type="text" required value="{{ form.get('business_name', '') }}"
+               {% if account_type != 'owner' %}disabled{% endif %}></div>
+      <div class="field"><label for="business_type">Business type</label>
+        <select id="business_type" name="business_type" {% if account_type != 'owner' %}disabled{% endif %}>
+          {% for t in business_types %}<option value="{{ t }}" {% if form.get('business_type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </select></div>
+      <label class="check" style="margin-bottom:16px"><input type="checkbox" name="load_demo" value="1" {% if account_type != 'owner' %}disabled{% endif %}> Start with sample transactions so I can look around</label>
+    </div>
+
+    <div data-for="employee" {% if account_type != 'employee' %}hidden{% endif %}>
+      <div class="field"><label for="join_code">Business code</label>
+        <input id="join_code" name="join_code" type="text" required autocomplete="off" spellcheck="false"
+               class="code-input" maxlength="12" placeholder="K7MQ2XRB" aria-describedby="code-hint"
+               value="{{ form.get('join_code', '') }}" {% if account_type != 'employee' %}disabled{% endif %}>
+        <span class="hint" id="code-hint">Ask the business owner. It's on their Team &amp; roles page.</span></div>
+    </div>
+
+    <button class="btn btn-primary btn-block" type="submit" id="submit-btn">
+      {{ 'Join the business' if account_type == 'employee' else 'Create business account' }}</button>
   </form>
 </div>
 <p class="muted" style="text-align:center;margin-top:16px">Already have an account? <a href="{{ url_for('login_page') }}">Log in</a></p>
+<script>
+  (function () {
+    var form = document.getElementById("signup-form"), btn = document.getElementById("submit-btn");
+    function show(type) {
+      form.querySelectorAll("[data-for]").forEach(function (group) {
+        var on = group.getAttribute("data-for") === type;
+        group.hidden = !on;
+        // Hidden fields are disabled so they aren't required or sent.
+        group.querySelectorAll("input, select").forEach(function (el) { el.disabled = !on; });
+      });
+      btn.textContent = type === "employee" ? "Join the business" : "Create business account";
+    }
+    form.querySelectorAll("input[name=account_type]").forEach(function (radio) {
+      radio.addEventListener("change", function () { show(radio.value); });
+    });
+  })();
+</script>
 {% endblock %}

@@ -75,6 +75,8 @@ def create_app(db_path=None):
             "current_user": accounts.get_user(g.db, g.user_id) if b else None,
             "unread_alerts": alerts.unread_count(g.db, b["id"]) if b else 0,
             "can": lambda needed: bool(b) and accounts.can(b["role"], needed),
+            "can_upload": bool(b) and accounts.can_upload(b["role"]),
+            "is_employee": bool(b) and b["role"] == accounts.EMPLOYEE,
             "role_names": labels.ROLE_NAMES,
             "rule_names": labels.FLAG_TYPE_NAMES,
             "method_names": labels.METHOD_NAMES,
@@ -84,12 +86,29 @@ def create_app(db_path=None):
         }
 
     def guard(role="viewer"):
-        """Redirect to login if signed out; 403 if the user's role is below `role`."""
+        """Redirect to login if signed out; 403 if the user's role is below `role`.
+
+        Employees only upload files, so every other page sends them back to the upload page."""
         if g.business is None:
             return redirect(url_for("login_page", next=request.path))
+        if g.business["role"] == accounts.EMPLOYEE:
+            flash("That page is for the business owner. You can upload files here.", "error")
+            return redirect(url_for("upload_page"))
         if not accounts.can(g.business["role"], role):
             abort(403)
         return None
+
+    def guard_upload():
+        """Owners and employees can upload files."""
+        if g.business is None:
+            return redirect(url_for("login_page", next=request.path))
+        if not accounts.can_upload(g.business["role"]):
+            abort(403)
+        return None
+
+    def home_for(business):
+        """Owners, reviewers and viewers land on the dashboard; employees on the upload page."""
+        return url_for("upload_page") if business["role"] == accounts.EMPLOYEE else url_for("dashboard")
 
     def log(action, detail=""):
         activity.log(g.db, g.business["id"], g.user_id, action, detail)
@@ -111,27 +130,41 @@ def create_app(db_path=None):
 
     @app.route("/signup", methods=["GET", "POST"])
     def signup_page():
+        """Two kinds of account: a business owner (admin) creates the business; an employee joins
+        one with the business code the owner shares."""
         error = None
         form = request.form
+        account_type = form.get("account_type") or request.args.get("as", "owner")
+        if account_type not in ("owner", "employee"):
+            account_type = "owner"
         if request.method == "POST":
             try:
-                user_id, business_id = accounts.register_owner(
-                    g.db, form.get("email"), form.get("password"), form.get("full_name"),
-                    form.get("business_name"), form.get("business_type", "Other"),
-                )
+                if account_type == "employee":
+                    user_id, business_id = accounts.register_employee(
+                        g.db, form.get("email"), form.get("password"), form.get("full_name"), form.get("join_code"))
+                else:
+                    user_id, business_id = accounts.register_owner(
+                        g.db, form.get("email"), form.get("password"), form.get("full_name"),
+                        form.get("business_name"), form.get("business_type", "Other"),
+                    )
             except AccountError as e:
                 error = str(e)
             else:
                 session.clear()
                 session["user_id"] = user_id
+                if account_type == "employee":
+                    activity.log(g.db, business_id, user_id, "Joined as an employee")
+                    flash("Welcome! Upload your transaction files here. The owner reviews anything unusual.")
+                    return redirect(url_for("upload_page"))
                 activity.log(g.db, business_id, user_id, "Created the account")
                 alerts.update_settings(g.db, business_id, {"email_to": form.get("email", "").strip().lower()})
                 if form.get("load_demo"):
-                    demo_data.load_demo_data(g.db, business_id)
+                    demo_data.load_demo_data(g.db, business_id, user_id)
                     detection.run_detection(g.db, business_id)
                     activity.log(g.db, business_id, user_id, "Loaded sample data")
                 return redirect(url_for("dashboard"))
-        return render_template("signup.html", error=error, form=form, business_types=accounts.BUSINESS_TYPES)
+        return render_template("signup.html", error=error, form=form, account_type=account_type,
+                               business_types=accounts.BUSINESS_TYPES)
 
     @app.route("/login", methods=["GET", "POST"])
     def login_page():
@@ -145,7 +178,7 @@ def create_app(db_path=None):
                 activity.log(g.db, business["id"], user["id"], "Logged in")
                 next_url = request.args.get("next", "")
                 return redirect(next_url if next_url.startswith("/") and not next_url.startswith("//")
-                                else url_for("dashboard"))
+                                else home_for(business))
             error = "Email or password is incorrect."
         return render_template("login.html", error=error, form=request.form)
 
@@ -189,7 +222,7 @@ def create_app(db_path=None):
                           f"{s['dup_window_hours']:g} hours apart"),
             ("large", f"{money_filter(s['large_limit'])} or more"),
             ("small", f"{money_filter(s['small_limit'])} or less"),
-            ("spike", f"A day's category spending {s['spike_multiplier']:g}x its daily average"),
+            ("spike", f"A day's category spending {s['spike_multiplier']:g}x a usual day for that category"),
             ("zscore", f"{s['zscore_threshold']:g} standard deviations from the category average"
                        + ("" if s["statistical_enabled"] else " (off)")),
             ("iqr", f"Beyond {s['iqr_multiplier']:g}x the category's normal range"
@@ -209,6 +242,8 @@ def create_app(db_path=None):
 
     @app.get("/")
     def dashboard():
+        if g.business is not None and g.business["role"] == accounts.EMPLOYEE:
+            return redirect(url_for("upload_page"))
         if (r := guard()):
             return r
         bid = g.business["id"]
@@ -227,6 +262,8 @@ def create_app(db_path=None):
             last_run=flags.last_run(g.db, bid),
             checks=check_descriptions(settings.get_settings(g.db, bid), model_threshold_or_none()),
             headline=lambda f: labels.headline(f, fmt()),
+            uploads=insights.recent_uploads(g.db, bid),
+            employees=sum(m["role"] == accounts.EMPLOYEE for m in accounts.list_members(g.db, bid)),
         )
 
     @app.post("/run")
@@ -341,13 +378,17 @@ def create_app(db_path=None):
             page = max(1, int(a.get("page", 1)))
         except ValueError:
             page = 1
+        upload = None
+        if a.get("upload", "").isdigit():
+            upload = next((u for u in csv_import.list_uploads(g.db, g.business["id"]) if u["id"] == int(a["upload"])),
+                          None)
         result = transactions.list_transactions(
             g.db, g.business["id"], category=a.get("category") or None, date_from=a.get("from") or None,
             date_to=a.get("to") or None, direction=a.get("direction") or None,
-            flagged_only=a.get("flagged") == "1", page=page, per_page=50)
+            flagged_only=a.get("flagged") == "1", page=page, per_page=50, upload_id=upload["id"] if upload else None)
         pages = max(1, -(-result["total"] // result["per_page"]))
         args = {k: v for k, v in a.items() if k != "page" and v}
-        return render_template("transactions.html", result=result, pages=pages, args=args,
+        return render_template("transactions.html", result=result, pages=pages, args=args, upload=upload,
                                categories=accounts.list_categories(g.db, g.business["id"]),
                                risk=risk.scores_by_transaction(g.db, g.business["id"]))
 
@@ -474,11 +515,17 @@ def create_app(db_path=None):
                     accounts.remove_member(g.db, bid, int(form.get("user_id", 0)))
                     log("Removed a team member")
                     flash("Removed from the team.")
+                elif form.get("action") == "new_code":
+                    accounts.reset_join_code(g.db, bid)
+                    log("Made a new business code")
+                    flash("New business code made. The old one no longer works; current employees keep access.")
                 return redirect(url_for("team_page"))
             except (AccountError, ValueError) as e:
                 error = str(e)
         return render_template("team.html", members=accounts.list_members(g.db, bid), error=error,
-                               form=request.form, role_help=labels.ROLE_HELP)
+                               form=request.form, role_help=labels.ROLE_HELP, member_roles=accounts.MEMBER_ROLES,
+                               join_code=g.business["join_code"] if accounts.can(g.business["role"], "owner") else None,
+                               signup_url=url_for("signup_page", **{"as": "employee"}, _external=True))
 
     # ---------- Business profile, AI models, detection settings ----------
 
@@ -582,10 +629,20 @@ def create_app(db_path=None):
                     f.unlink(missing_ok=True)
 
     def _upload_page(**kwargs):
-        return render_template("upload.html", uploads=csv_import.list_uploads(g.db, g.business["id"]),
-                               fields=csv_import.FIELDS, **kwargs)
+        employee = g.business["role"] == accounts.EMPLOYEE  # employees see only their own files
+        owner = conn_owner_name() if employee else None
+        return render_template("upload.html", fields=csv_import.FIELDS, owner_name=owner,
+                               uploads=csv_import.list_uploads(g.db, g.business["id"],
+                                                               uploaded_by=g.user_id if employee else None),
+                               **kwargs)
+
+    def conn_owner_name():
+        row = g.db.execute("SELECT u.full_name FROM users u JOIN businesses b ON b.owner_user_id = u.id "
+                           "WHERE b.id = ?", (g.business["id"],)).fetchone()
+        return row["full_name"] if row else "the owner"
 
     def _after_import(summary, action):
+        # Checks run on every upload, so the owner gets alerts for anything unusual in an employee's file.
         result = detection.run_detection(g.db, g.business["id"])
         log(action, f"{summary['filename']}: {summary['rows_imported']} rows imported")
         found = {labels.FLAG_TYPE_NAMES.get(k, k): v for k, v in result["counts"].items()}
@@ -593,13 +650,13 @@ def create_app(db_path=None):
 
     @app.get("/upload")
     def upload_page():
-        if (r := guard("owner")):
+        if (r := guard_upload()):
             return r
         return _upload_page()
 
     @app.post("/upload")
     def upload_preview():
-        if (r := guard("owner")):
+        if (r := guard_upload()):
             return r
         file = request.files.get("file")
         if not file or not file.filename:
@@ -618,7 +675,7 @@ def create_app(db_path=None):
 
     @app.post("/upload/import")
     def upload_import():
-        if (r := guard("owner")):
+        if (r := guard_upload()):
             return r
         pending = session.get("pending_upload") or {}
         path = _pending_path(pending.get("token"))
@@ -627,7 +684,7 @@ def create_app(db_path=None):
         mapping = {field: request.form.get(f"map_{field}", "") for field in csv_import.FIELDS}
         content = path.read_bytes()
         try:
-            summary = csv_import.import_csv(g.db, g.business["id"], pending["filename"], content, mapping)
+            summary = csv_import.import_csv(g.db, g.business["id"], pending["filename"], content, mapping, g.user_id)
         except CsvImportError as e:
             preview = csv_import.preview_csv(content)
             preview["suggested_mapping"] = {k: v for k, v in mapping.items() if v}
@@ -641,7 +698,7 @@ def create_app(db_path=None):
         if (r := guard("owner")):
             return r
         try:
-            summary = demo_data.load_demo_data(g.db, g.business["id"])
+            summary = demo_data.load_demo_data(g.db, g.business["id"], g.user_id)
         except CsvImportError as e:
             return _upload_page(error=str(e))
         return _after_import(summary, "Loaded sample data")

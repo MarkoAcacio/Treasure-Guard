@@ -11,8 +11,10 @@ def _row_to_dict(row):
 
 
 def list_transactions(conn, business_id, category=None, date_from=None, date_to=None,
-                      direction=None, flagged_only=False, page=1, per_page=50):
-    """A page of transactions, newest first, each with its highest flag severity (if flagged)."""
+                      direction=None, flagged_only=False, page=1, per_page=50, upload_id=None):
+    """A page of transactions, newest first, each with its highest flag severity (if flagged).
+
+    `upload_id` limits the list to the payments from one uploaded file."""
     per_page = max(1, min(int(per_page), MAX_PAGE_SIZE))
     page = max(1, int(page))
     where, args = ["t.business_id = ?"], [business_id]
@@ -28,6 +30,9 @@ def list_transactions(conn, business_id, category=None, date_from=None, date_to=
     if direction in ("in", "out"):
         where.append("t.direction = ?")
         args.append(direction)
+    if upload_id:
+        where.append("t.upload_id = ?")
+        args.append(int(upload_id))
 
     # Flags store their transaction IDs as a JSON list; json_each lets SQLite match them.
     flag_join = """

@@ -32,13 +32,32 @@ from .preprocessing import (TRAINING_COLUMNS_DROPPED, TRAINING_COLUMNS_USED, TRA
 MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
 BUNDLE_PATH = MODEL_DIR / "fraud_models.joblib"
 CARD_PATH = MODEL_DIR / "model_card.json"
-MODEL_VERSION = 4
+MODEL_VERSION = 6
 VARIANTS = {"with_time": True, "date_only": False}
 IFOREST_PARAMS = {"n_estimators": 200, "max_samples": 512, "random_state": 42}
-CLASSIFIER_PARAMS = {"max_iter": 400, "learning_rate": 0.08, "max_leaf_nodes": 31, "l2_regularization": 1.0,
-                     "early_stopping": True, "validation_fraction": 0.1, "random_state": 42}
+# Candidate settings for the fraud model; the one with the best PR-AUC on the validation cards is kept.
+_COMMON = {"early_stopping": True, "validation_fraction": 0.1, "random_state": 42}
+CLASSIFIER_CANDIDATES = [
+    {"max_iter": 400, "learning_rate": 0.08, "max_leaf_nodes": 31, "l2_regularization": 1.0, **_COMMON},
+    {"max_iter": 800, "learning_rate": 0.05, "max_leaf_nodes": 63, "min_samples_leaf": 50,
+     "l2_regularization": 1.0, **_COMMON},
+    {"max_iter": 1200, "learning_rate": 0.03, "max_leaf_nodes": 127, "min_samples_leaf": 100,
+     "l2_regularization": 2.0, **_COMMON},
+]
 IFOREST_FIT_ROWS = 300_000
 BUSINESS_PERCENTILE = 97.0
+VALIDATION_SHARE = 0.2    # latest 20% of the training period is used to choose settings and thresholds
+LOW_SENSITIVITY_PROBABILITY = 0.5  # fraud risk used by the "Low" sensitivity preset (fewer false alarms)
+
+
+def with_unusual_score(rows, iforest):
+    """Classifier input: the features plus the Isolation Forest's unusualness score.
+
+    The fraud model learns how much to trust Isolation Forest, instead of every unusual
+    payment becoming an alarm on its own.
+    """
+    X = np.asarray(rows, dtype=float)
+    return np.column_stack([X, -iforest.score_samples(X)])
 
 
 def download():
@@ -64,13 +83,14 @@ def load_split(csv_path, date_only):
 
 
 def featurize(csv_path, use_time, fill_change):
-    X, y, card_ids = [], [], []
+    X, y, card_ids, times = [], [], [], []
     for card_no, (txns, labels) in enumerate(load_split(csv_path, date_only=not use_time)):
         rows, _ = build_features(txns, use_time, fill_change)
         X.extend(rows)
         y.extend(labels[t["id"]] for t in txns)
         card_ids.extend([card_no] * len(rows))
-    return X, np.array(y), np.array(card_ids)
+        times.extend(t["timestamp"] for t in txns)
+    return X, np.array(y), np.array(card_ids), np.array(times, dtype="datetime64[s]")
 
 
 def _fill(X, value):
@@ -104,10 +124,10 @@ def _prf(y, flagged):
 def train_variant(data_dir, use_time):
     names = feature_names(use_time)
     # First pass: compute fill value for change_from_last_payment from the training data.
-    X_tr, y_tr, cards_tr = featurize(data_dir / "fraudTrain.csv", use_time, fill_change=None)
+    X_tr, y_tr, cards_tr, times_tr = featurize(data_dir / "fraudTrain.csv", use_time, fill_change=None)
     fill_change = float(median(row[3] for row in X_tr if row[3] is not None))
     X_tr = _fill(X_tr, fill_change)
-    X_te, y_te, cards_te = featurize(data_dir / "fraudTest.csv", use_time, fill_change)
+    X_te, y_te, cards_te, _ = featurize(data_dir / "fraudTest.csv", use_time, fill_change)
     X_te = np.array(X_te, dtype=float)
 
     # Isolation Forest (no labels used).
@@ -117,18 +137,27 @@ def train_variant(data_dir, use_time):
     if_scores_te = -iforest.score_samples(X_te)
     if_pct_te = _per_business_percentiles(if_scores_te, cards_te)
 
-    # Classifier: fit on the first 85% of the training period, pick the threshold on the last 15%.
-    cards = np.unique(cards_tr)  # split by card so no business is in both parts
-    rng.shuffle(cards)
-    val_cards = set(cards[: int(len(cards) * 0.15)].tolist())
-    is_val = np.array([c in val_cards for c in cards_tr])
-    clf = HistGradientBoostingClassifier(**CLASSIFIER_PARAMS).fit(X_tr[~is_val], y_tr[~is_val])
-    p_val = clf.predict_proba(X_tr[is_val])[:, 1]
+    # Fraud model sees the features + the Isolation Forest score.
+    C_tr, C_te = with_unusual_score(X_tr, iforest), np.column_stack([X_te, if_scores_te])
+
+    # Fit on the earlier part of the training period; the latest VALIDATION_SHARE picks the settings
+    # and thresholds. Like real use (and the test set), the model is checked on payments made after
+    # the ones it learned from, so the chosen thresholds hold up better over time.
+    cutoff = np.quantile(times_tr.astype("int64"), 1 - VALIDATION_SHARE).astype("datetime64[s]")
+    is_val = times_tr >= cutoff
+    best_ap, clf, params, search = -1.0, None, None, []
+    for candidate in CLASSIFIER_CANDIDATES:
+        model = HistGradientBoostingClassifier(**candidate).fit(C_tr[~is_val], y_tr[~is_val])
+        ap = average_precision_score(y_tr[is_val], model.predict_proba(C_tr[is_val])[:, 1])
+        search.append({"parameters": candidate, "validation_pr_auc": round(ap, 4)})
+        print(f"  candidate {candidate} -> validation PR-AUC {ap:.4f}", flush=True)
+        if ap > best_ap:
+            best_ap, clf, params = ap, model, candidate
+    p_val = clf.predict_proba(C_tr[is_val])[:, 1]
     prec, rec, thr = precision_recall_curve(y_tr[is_val], p_val)
     f1 = 2 * prec * rec / np.maximum(prec + rec, 1e-9)
-    best = int(np.argmax(f1[:-1]))
-    threshold = float(thr[best])
-    p_te = clf.predict_proba(X_te)[:, 1]
+    threshold = float(thr[int(np.argmax(f1[:-1]))])   # best balance of precision and recall (F1)
+    p_te = clf.predict_proba(C_te)[:, 1]
 
     # Baseline: a simple rule, "amount at or above the business's own 99th percentile".
     amount_rank = _per_business_percentiles(X_te[:, 0], cards_te)
@@ -147,6 +176,7 @@ def train_variant(data_dir, use_time):
             "pr_auc": round(average_precision_score(y_te, p_te), 4),
             "threshold": round(threshold, 4),
             "at_threshold": _prf(y_te, (p_te >= threshold).astype(int)),
+            "at_low_sensitivity": _prf(y_te, (p_te >= LOW_SENSITIVITY_PROBABILITY).astype(int)),
         },
         "isolation_forest": {
             "roc_auc": round(roc_auc_score(y_te, if_scores_te), 4),
@@ -155,21 +185,29 @@ def train_variant(data_dir, use_time):
                 _prf(y_te, (if_pct_te >= BUSINESS_PERCENTILE).astype(int)),
         },
         "baseline_rule_amount_top_1pct_per_business": _prf(y_te, (amount_rank >= 99).astype(int)),
+        # Old way, kept for comparison: every Isolation Forest flag is its own alarm.
         "combined_classifier_or_isolation_forest": _prf(
             y_te, ((p_te >= threshold) | (if_pct_te >= BUSINESS_PERCENTILE)).astype(int)),
+        # Previous version: an Isolation Forest flag counted when the large-amount rule agreed.
+        "combined_classifier_or_supported_isolation_forest": _prf(
+            y_te, ((p_te >= threshold) | ((if_pct_te >= BUSINESS_PERCENTILE) & (amount_rank >= 99))).astype(int)),
+        # Now: Isolation Forest only feeds the fraud model and raises no alarms of its own,
+        # so what owners see from the AI is the fraud model's flags.
     }
     model = {"features": list(names), "fill_change": fill_change, "feature_stats": stats,
-             "iforest": iforest, "classifier": clf, "threshold": threshold}
-    return model, evaluation, int(len(y_tr)), int(y_tr.sum())
+             "iforest": iforest, "classifier": clf, "classifier_uses_unusual_score": True,
+             "threshold": threshold}
+    return model, evaluation, int(len(y_tr)), int(y_tr.sum()), params, search
 
 
 def train_all(data_dir=None):
     data_dir = Path(data_dir) if data_dir else download()
-    models, evaluations, rows = {}, {}, {}
+    models, evaluations, rows, chosen, searches = {}, {}, {}, {}, {}
     for variant, use_time in VARIANTS.items():
         print(f"Training {variant} ...", flush=True)
-        models[variant], evaluations[variant], n, fraud = train_variant(data_dir, use_time)
+        models[variant], evaluations[variant], n, fraud, params, search = train_variant(data_dir, use_time)
         rows[variant] = {"train_rows": n, "train_fraud": fraud}
+        chosen[variant], searches[variant] = params, search
         print(json.dumps(evaluations[variant], indent=2), flush=True)
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -182,8 +220,9 @@ def train_all(data_dir=None):
         "models": {
             "isolation_forest": {"type": "IsolationForest", "parameters": IFOREST_PARAMS,
                                  "uses_labels": False, "fit_rows": IFOREST_FIT_ROWS},
-            "fraud_classifier": {"type": "HistGradientBoostingClassifier", "parameters": CLASSIFIER_PARAMS,
-                                 "uses_labels": True},
+            "fraud_classifier": {"type": "HistGradientBoostingClassifier", "parameters": chosen,
+                                 "inputs": "features + Isolation Forest score",
+                                 "settings_search": searches, "uses_labels": True},
         },
         "training_data": {
             "dataset": f"https://www.kaggle.com/datasets/{TRAINING_DATASET}",

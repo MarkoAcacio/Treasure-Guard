@@ -77,11 +77,12 @@ SENSITIVITY_NAMES = {
     "custom": "Custom",
 }
 
-ROLE_NAMES = {"owner": "Owner", "reviewer": "Reviewer", "viewer": "Viewer"}
+ROLE_NAMES = {"owner": "Owner (admin)", "reviewer": "Reviewer", "viewer": "Viewer", "employee": "Employee"}
 ROLE_HELP = {
-    "owner": "Everything, including uploads, settings and the team.",
+    "owner": "Everything, including the dashboard, uploads, settings and the team.",
     "reviewer": "Can see everything and review flags, but can't upload or change settings.",
     "viewer": "Can look at everything but can't change anything.",
+    "employee": "Uploads transaction files and sees their own uploads. Can't see the dashboard, flags or settings.",
 }
 
 CURRENCY_SYMBOLS = {"PHP": "₱", "USD": "$"}
@@ -118,7 +119,7 @@ def flag_facts(flag, fmt):
         facts = [("This payment", fmt(flag["amount"])),
                  ("Your limit", fmt(d["limit"]))]
     elif kind == "spike":
-        facts = [("Spent that day", fmt(d["day_total"])), ("Usual daily spend that month", fmt(d["daily_average"])),
+        facts = [("Spent that day", fmt(d["day_total"])), ("Usual day for this category that month", fmt(d["daily_average"])),
                  ("Times the usual", f"{d['ratio']:g}x (flags at {d['multiplier']:g}x)"),
                  ("Payments that day", d["payments"])]
     elif kind == "zscore":

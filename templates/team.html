@@ -3,7 +3,7 @@
 {% block title %}Team & roles{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Team & roles</h1><p>Let your bookkeeper or staff help review flags without giving them full control.</p></div>
+  <div><h1>Team & roles</h1><p>Employees upload files for you; reviewers and viewers help check flags without full control.</p></div>
 </div>
 {% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
 
@@ -23,7 +23,7 @@
                 <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ m.id }}">
                 <label class="sr-only" for="role-{{ m.id }}">Role for {{ m.full_name }}</label>
                 <select id="role-{{ m.id }}" name="role" style="width:auto">
-                  {% for r in ('reviewer', 'viewer') %}<option value="{{ r }}" {% if m.role == r %}selected{% endif %}>{{ role_names[r] }}</option>{% endfor %}
+                  {% for r in member_roles %}<option value="{{ r }}" {% if m.role == r %}selected{% endif %}>{{ role_names[r] }}</option>{% endfor %}
                 </select>
                 <button class="btn btn-sm" type="submit">Change</button>
               </form>
@@ -44,9 +44,31 @@
   </section>
 
   <div class="stack">
+    {% if join_code %}
+    <section class="card" aria-labelledby="code-h">
+      <h2 id="code-h" style="margin-bottom:6px">Business code</h2>
+      <p class="muted">Employees sign up, choose <b>Employee</b> and enter this code. They can upload files but can't see the dashboard.</p>
+      <div class="join-code" style="margin-bottom:12px">
+        <code aria-label="Business code {{ join_code|list|join(' ') }}">{{ join_code }}</code>
+        <button class="btn btn-sm" type="button" id="copy-code" data-code="{{ join_code }}">Copy</button>
+      </div>
+      <p class="hint" style="margin-bottom:10px">Sign-up link: <a href="{{ signup_url }}">{{ signup_url }}</a></p>
+      <form method="post" onsubmit="return confirm('Make a new code? The current one will stop working for new sign-ups.')">
+        <input type="hidden" name="action" value="new_code">
+        <button class="btn btn-sm btn-ghost" type="submit">{{ ui.icon('refresh') }} Make a new code</button>
+      </form>
+    </section>
+    <script>
+      document.getElementById("copy-code").addEventListener("click", function () {
+        var b = this;
+        navigator.clipboard.writeText(b.dataset.code).then(function () { b.textContent = "Copied"; });
+      });
+    </script>
+    {% endif %}
     {% if can('owner') %}
     <section class="card" aria-labelledby="add-h">
-      <h2 id="add-h" style="margin-bottom:12px">Add someone</h2>
+      <h2 id="add-h" style="margin-bottom:4px">Add someone yourself</h2>
+      <p class="muted" style="margin-bottom:12px">Or create their login here and give them the password.</p>
       <form method="post">
         <input type="hidden" name="action" value="add">
         <div class="field"><label for="full_name">Name</label><input id="full_name" name="full_name" type="text" required value="{{ form.get('full_name', '') }}"></div>
@@ -55,14 +77,14 @@
           <input id="password" name="password" type="text" minlength="8" required autocomplete="off">
           <span class="hint">At least 8 characters. Share it with them privately.</span></div>
         <div class="field"><label for="role">Role</label>
-          <select id="role" name="role">{% for r in ('reviewer', 'viewer') %}<option value="{{ r }}" {% if form.get('role') == r %}selected{% endif %}>{{ role_names[r] }}</option>{% endfor %}</select></div>
+          <select id="role" name="role">{% for r in member_roles %}<option value="{{ r }}" {% if form.get('role') == r %}selected{% endif %}>{{ role_names[r] }}</option>{% endfor %}</select></div>
         <button class="btn btn-primary" type="submit">Add to team</button>
       </form>
     </section>
     {% endif %}
     <section class="card" aria-labelledby="roles-h">
       <h2 id="roles-h" style="margin-bottom:8px">What each role can do</h2>
-      <dl class="facts">{% for r, text in role_help.items() %}<dt>{{ role_names[r] }}</dt><dd style="font-weight:400">{{ text }}</dd>{% endfor %}</dl>
+      <dl class="role-list">{% for r, text in role_help.items() %}<dt>{{ role_names[r] }}</dt><dd>{{ text }}</dd>{% endfor %}</dl>
     </section>
   </div>
 </div>

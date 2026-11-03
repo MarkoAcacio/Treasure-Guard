@@ -208,8 +208,10 @@ def parse_rows(header, body, mapping):
     return transactions, errors
 
 
-def import_csv(conn, business_id, filename, file_bytes, mapping):
-    """Validate and save a CSV for one business. Returns a summary dict."""
+def import_csv(conn, business_id, filename, file_bytes, mapping, uploaded_by=None):
+    """Validate and save a CSV for one business. Returns a summary dict.
+
+    `uploaded_by` is the user who uploaded it (an owner or an employee)."""
     header, body = _read_rows(file_bytes)
     mapping = check_mapping(mapping, header)
     transactions, errors = parse_rows(header, body, mapping)
@@ -238,8 +240,9 @@ def import_csv(conn, business_id, filename, file_bytes, mapping):
 
     upload_id = conn.execute(
         """INSERT INTO uploads (business_id, filename, uploaded_at, rows_total, rows_imported, rows_skipped,
-                                column_mapping) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (business_id, filename, now(), len(body), len(new), len(errors) + len(already), json.dumps(mapping)),
+                                column_mapping, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (business_id, filename, now(), len(body), len(new), len(errors) + len(already), json.dumps(mapping),
+         uploaded_by),
     ).lastrowid
     conn.executemany(
         """INSERT INTO transactions (business_id, upload_id, reference, occurred_at, amount, direction,
@@ -267,10 +270,18 @@ def import_csv(conn, business_id, filename, file_bytes, mapping):
     }
 
 
-def list_uploads(conn, business_id):
-    rows = conn.execute(
-        "SELECT * FROM uploads WHERE business_id = ? ORDER BY id DESC", (business_id,)
-    ).fetchall()
+def list_uploads(conn, business_id, uploaded_by=None, limit=None):
+    """Uploads, newest first, with the uploader's name. `uploaded_by` limits them to one person's files."""
+    sql = ("SELECT up.*, u.full_name AS uploader_name FROM uploads up LEFT JOIN users u ON u.id = up.uploaded_by "
+           "WHERE up.business_id = ?")
+    args = [business_id]
+    if uploaded_by is not None:
+        sql += " AND up.uploaded_by = ?"
+        args.append(uploaded_by)
+    sql += " ORDER BY up.id DESC"
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    rows = conn.execute(sql, args).fetchall()
     out = []
     for r in rows:
         d = dict(r)

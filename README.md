@@ -5,7 +5,7 @@ Transaction anomaly detection for Philippine MSMEs.
 ## What's built
 
 ### Increment 1 — Core system and data ingestion
-- Owner sign-up and login (passwords are hashed), one business profile per owner (name, type, currency, address)
+- Sign-up and login (passwords are hashed) as a **business owner (admin)**, who creates the business, or an **employee**, who joins it with the owner's 8-character business code. One business profile per owner (name, type, currency, address)
 - Spending categories per business (defaults on sign-up, plus any new categories found in uploads)
 - CSV upload in two steps: **preview** (columns, sample rows, suggested column mapping) then **import** with the owner's mapping
 - Validation: required date and amount, many date formats, amounts like `₱1,200.00`, `PHP 99`, `(350.50)`; bad rows are reported by line number; the whole file is rejected if more than half the rows are bad (usually a wrong mapping); rows whose reference number was already imported are skipped
@@ -51,7 +51,7 @@ Owners can now view, review and resolve flagged transactions.
 - **Combined risk score:** one 0–100 score per payment. Each kind of check (rules, statistics, AI) gives its strongest score; the risk is the highest of those, +15 if two kinds agree, +25 if all three do. Flags marked OK don't count.
 - **Reports:** a summary for any date range (print or save as PDF from the browser) and CSV downloads of flags and transactions (cells are protected against spreadsheet formula injection).
 - **Activity log:** sign-ups, logins, uploads, setting changes, reviews and team changes, with who did them.
-- **Team & roles:** the owner can add reviewers (can review flags) and viewers (read-only). Only the owner can upload, change settings or manage the team.
+- **Team & roles:** employees upload transaction files and see only their own uploads; they can't open the dashboard, flags, reports or settings (pages send them back to Upload, the API returns 403). The owner sees every upload, who sent it and how many flags it has on the Overview, and can open its payments. The owner can also add reviewers (can review flags) and viewers (read-only), change anyone's role, and make a new business code on Team & roles. Only the owner and employees can upload; only the owner can change settings or manage the team.
 
 ### AI models (trained on a labelled Kaggle fraud dataset)
 - **Training data:** [Credit Card Transactions Fraud Detection Dataset](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (Sparkov simulation), 1.30M training rows (Jan 2019 – Jun 2020) and 556k test rows (Jun – Dec 2020), about 0.5% fraud. Each card is treated as one business and its merchants as payees; amounts converted USD → PHP at 62.879. Personal columns (name, address, birth date, job, location) are dropped.
@@ -96,17 +96,17 @@ The JSON API below exposes the same features for a future frontend.
 python -m unittest
 ```
 
-51 tests, including `tests/test_increment4.py` for the dashboard, alerts, explanations, review workflow, risk score, reports and roles.
+62 tests, including `tests/test_increment4.py` for the dashboard, alerts, explanations, review workflow, risk score, reports and roles, and `tests/test_roles.py` for owner and employee accounts.
 
 ## JSON API
 
 All routes are under `/api` and use a session cookie (log in or register first).
 **Every POST, PUT and PATCH must send the header `X-Requested-With: TreasuryGuard`** (blocks cross-site requests).
-Errors return `{"error": "message"}` with a 4xx status. Changes need the right role: viewers can only read, reviewers can also review flags and mark alerts read, owners can do everything (403 otherwise).
+Errors return `{"error": "message"}` with a 4xx status. Changes need the right role: viewers can only read, reviewers can also review flags and mark alerts read, owners can do everything (403 otherwise). Employees can only use `/api/auth/*`, `GET /api/business`, `GET /api/categories`, `POST /api/uploads/preview`, `POST /api/uploads` (no detection results in the reply) and `GET /api/uploads` (their own files).
 
 | Method & route | What it does |
 |---|---|
-| `POST /api/auth/register` | `{email, password, full_name, business_name, business_type}` → creates owner + business, logs in |
+| `POST /api/auth/register` | Owner: `{email, password, full_name, business_name, business_type}` → creates owner + business. Employee: `{account_type: "employee", email, password, full_name, join_code}` → joins that business. Logs in |
 | `POST /api/auth/login` | `{email, password}` |
 | `POST /api/auth/logout` | |
 | `GET /api/auth/me` | Current user and business |

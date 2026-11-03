@@ -34,11 +34,36 @@ def require_csrf_header():
         return error(f"Missing header {CSRF_HEADER}: {CSRF_VALUE}.", 403)
 
 
-def login_required(view):
+def member_required(view):
+    """Any logged-in member, employees included."""
     @wraps(view)
     def wrapper(*args, **kwargs):
         if g.business is None:
             return error("Log in first.", 401)
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def login_required(view):
+    """Logged in with dashboard access (owner, reviewer or viewer). Employees only upload files."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if g.business is None:
+            return error("Log in first.", 401)
+        if not accounts.can(g.business["role"], "viewer"):
+            return error("Employees can only upload files.", 403)
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def uploader_required(view):
+    """Owners and employees can upload files."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if g.business is None:
+            return error("Log in first.", 401)
+        if not accounts.can_upload(g.business["role"]):
+            return error("Only the owner or an employee can upload files.", 403)
         return view(*args, **kwargs)
     return wrapper
 
@@ -84,18 +109,27 @@ def detection_summary(result):
 
 @api.post("/auth/register")
 def register():
+    """account_type "owner" (default) creates a business; "employee" joins one with `join_code`."""
     data = body()
+    employee = data.get("account_type") == "employee"
     try:
-        user_id, business_id = accounts.register_owner(
-            g.db, data.get("email"), data.get("password"), data.get("full_name"),
-            data.get("business_name"), data.get("business_type", "Other"),
-        )
+        if employee:
+            user_id, business_id = accounts.register_employee(
+                g.db, data.get("email"), data.get("password"), data.get("full_name"), data.get("join_code"))
+        else:
+            user_id, business_id = accounts.register_owner(
+                g.db, data.get("email"), data.get("password"), data.get("full_name"),
+                data.get("business_name"), data.get("business_type", "Other"),
+            )
     except AccountError as e:
         return error(str(e))
     session.clear()
     session["user_id"] = user_id
-    activity.log(g.db, business_id, user_id, "Created the account")
-    alerts.update_settings(g.db, business_id, {"email_to": accounts.get_user(g.db, user_id)["email"]})
+    if employee:
+        activity.log(g.db, business_id, user_id, "Joined as an employee")
+    else:
+        activity.log(g.db, business_id, user_id, "Created the account")
+        alerts.update_settings(g.db, business_id, {"email_to": accounts.get_user(g.db, user_id)["email"]})
     return jsonify({"user": accounts.get_user(g.db, user_id),
                     "business": accounts.get_business_for_user(g.db, user_id)}), 201
 
@@ -119,7 +153,7 @@ def logout():
 
 
 @api.get("/auth/me")
-@login_required
+@member_required
 def me():
     return jsonify({"user": accounts.get_user(g.db, g.user_id), "business": g.business})
 
@@ -127,7 +161,7 @@ def me():
 # ---------- Business profile and categories ----------
 
 @api.get("/business")
-@login_required
+@member_required
 def get_business():
     return jsonify({"business": g.business, "business_types": accounts.BUSINESS_TYPES,
                     "currencies": accounts.CURRENCIES})
@@ -144,7 +178,7 @@ def update_business():
 
 
 @api.get("/categories")
-@login_required
+@member_required
 def list_categories():
     return jsonify({"categories": accounts.list_categories(g.db, g.business["id"])})
 
@@ -169,7 +203,7 @@ def uploaded_file():
 
 
 @api.post("/uploads/preview")
-@role_required("owner")
+@uploader_required
 def preview_upload():
     filename, content = uploaded_file()
     if not filename:
@@ -181,7 +215,7 @@ def preview_upload():
 
 
 @api.post("/uploads")
-@role_required("owner")
+@uploader_required
 def upload():
     filename, content = uploaded_file()
     if not filename:
@@ -191,10 +225,13 @@ def upload():
     except json.JSONDecodeError:
         return error("'mapping' must be JSON, e.g. {\"date\": \"Date\", \"amount\": \"Amount\"}.")
     try:
-        summary = csv_import.import_csv(g.db, g.business["id"], filename, content, mapping)
+        summary = csv_import.import_csv(g.db, g.business["id"], filename, content, mapping, g.user_id)
     except CsvImportError as e:
         return error(str(e))
-    summary["detection"] = detection_summary(detection.run_detection(g.db, g.business["id"]))
+    log("Uploaded a file", f"{filename}: {summary['rows_imported']} rows imported")
+    result = detection.run_detection(g.db, g.business["id"])
+    if accounts.can(g.business["role"], "viewer"):  # employees don't see the detection results
+        summary["detection"] = detection_summary(result)
     return jsonify(summary), 201
 
 
@@ -221,9 +258,11 @@ def model_info():
 
 
 @api.get("/uploads")
-@login_required
+@member_required
 def list_uploads():
-    return jsonify({"uploads": csv_import.list_uploads(g.db, g.business["id"])})
+    """All the business's uploads; an employee gets only their own."""
+    mine = g.user_id if g.business["role"] == accounts.EMPLOYEE else None
+    return jsonify({"uploads": csv_import.list_uploads(g.db, g.business["id"], uploaded_by=mine)})
 
 
 @api.post("/demo/load")

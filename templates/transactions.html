@@ -4,11 +4,17 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Transactions</h1><p>Everything you've uploaded. Flagged payments show their combined risk score.</p></div>
-  {% if can('owner') %}<a class="btn" href="{{ url_for('upload_page') }}">{{ ui.icon('upload') }} Upload CSV</a>{% endif %}
+  {% if can_upload %}<a class="btn" href="{{ url_for('upload_page') }}">{{ ui.icon('upload') }} Upload CSV</a>{% endif %}
 </div>
 
 <div class="card">
+  {% if upload %}
+  <div class="notice" role="status">{{ ui.icon('upload') }}<p>Showing payments from <b>{{ upload.filename }}</b>,
+    uploaded by {{ upload.uploader_name or 'a removed user' }} on {{ upload.uploaded_at|when }}.
+    <a href="{{ url_for('transactions_page') }}">Show all transactions</a></p></div>
+  {% endif %}
   <form class="filters" method="get" action="{{ url_for('transactions_page') }}">
+    {% if upload %}<input type="hidden" name="upload" value="{{ upload.id }}">{% endif %}
     <div class="field"><label for="category">Category</label>
       <select id="category" name="category"><option value="">All</option>
         {% for c in categories %}<option value="{{ c }}" {% if args.get('category') == c %}selected{% endif %}>{{ c }}</option>{% endfor %}

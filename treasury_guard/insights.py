@@ -103,3 +103,29 @@ def categories(conn, business_id, top=6):
         out.append({"name": "Everything else", "spent": round(v, 2), "share": round(v / total * 100, 1),
                     "flagged": sum(count_flagged[c] for c, _ in rest)})
     return out
+
+
+def recent_uploads(conn, business_id, limit=6):
+    """Latest uploads with who sent them and how many flags on their payments still wait for review.
+
+    Lets the owner see what employees have uploaded and jump straight to what needs checking.
+    """
+    import json
+    from .csv_import import list_uploads
+    uploads = list_uploads(conn, business_id, limit=limit)
+    if not uploads:
+        return []
+    ids = [u["id"] for u in uploads]
+    txn_upload = {r["id"]: r["upload_id"] for r in conn.execute(
+        f"SELECT id, upload_id FROM transactions WHERE business_id = ? AND upload_id IN ({','.join('?' * len(ids))})",
+        (business_id, *ids))}
+    waiting = {i: 0 for i in ids}
+    high = {i: 0 for i in ids}
+    for f in conn.execute("SELECT txn_ids, severity FROM flags WHERE business_id = ? AND status = 'new'", (business_id,)):
+        hit = {txn_upload[t] for t in json.loads(f["txn_ids"]) if t in txn_upload}
+        for upload_id in hit:
+            waiting[upload_id] += 1
+            high[upload_id] += f["severity"] == "high"
+    for u in uploads:
+        u["waiting"], u["waiting_high"] = waiting[u["id"]], high[u["id"]]
+    return uploads

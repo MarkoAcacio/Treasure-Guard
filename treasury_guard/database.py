@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS businesses (
     business_type TEXT NOT NULL DEFAULT 'Other',
     currency      TEXT NOT NULL DEFAULT 'PHP',
     address       TEXT NOT NULL DEFAULT '',
-    created_at    TEXT NOT NULL
+    created_at    TEXT NOT NULL,
+    join_code     TEXT                      -- employees enter this when they sign up
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -44,7 +45,8 @@ CREATE TABLE IF NOT EXISTS uploads (
     rows_total     INTEGER NOT NULL,
     rows_imported  INTEGER NOT NULL,
     rows_skipped   INTEGER NOT NULL,
-    column_mapping TEXT NOT NULL            -- JSON {field: csv column}
+    column_mapping TEXT NOT NULL,           -- JSON {field: csv column}
+    uploaded_by    INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -91,7 +93,7 @@ CREATE TABLE IF NOT EXISTS flags (
     PRIMARY KEY (business_id, flag_key)
 );
 
--- Who can use a business, and what they may do: owner | reviewer | viewer
+-- Who can use a business, and what they may do: owner | reviewer | viewer | employee
 CREATE TABLE IF NOT EXISTS members (
     business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
     user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,  -- one business per user
@@ -141,7 +143,7 @@ CREATE TABLE IF NOT EXISTS detection_runs (
 """
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Tables from the single-business Increment 2 MVP. They held only flags generated from the
 # demo dataset, so they are dropped and re-created per business.
@@ -158,8 +160,38 @@ def connect(path=DEFAULT_DB_PATH):
     conn.executescript(SCHEMA)
     if version < 3:
         _upgrade_to_review_and_teams(conn)
+    if version < 4:
+        _upgrade_to_employees(conn)
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_business_join_code ON businesses (join_code)")
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return conn
+
+
+def _upgrade_to_employees(conn):
+    """Employee accounts: a join code per business, who uploaded each file, and the AI
+    "Unusual pattern" check off by default (it raised far more false alarms than real issues)."""
+    import json
+    import secrets
+    from .accounts import JOIN_CODE_ALPHABET, JOIN_CODE_LENGTH
+    if "join_code" not in {r["name"] for r in conn.execute("PRAGMA table_info(businesses)")}:
+        conn.execute("ALTER TABLE businesses ADD COLUMN join_code TEXT")
+    if "uploaded_by" not in {r["name"] for r in conn.execute("PRAGMA table_info(uploads)")}:
+        conn.execute("ALTER TABLE uploads ADD COLUMN uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        conn.execute("UPDATE uploads SET uploaded_by = (SELECT owner_user_id FROM businesses b WHERE b.id = business_id)")
+    used = {r["join_code"] for r in conn.execute("SELECT join_code FROM businesses WHERE join_code IS NOT NULL")}
+    for r in conn.execute("SELECT id FROM businesses WHERE join_code IS NULL").fetchall():
+        code = None
+        while code is None or code in used:
+            code = "".join(secrets.choice(JOIN_CODE_ALPHABET) for _ in range(JOIN_CODE_LENGTH))
+        used.add(code)
+        conn.execute("UPDATE businesses SET join_code = ? WHERE id = ?", (code, r["id"]))
+    for r in conn.execute("SELECT business_id, value FROM detection_settings").fetchall():
+        value = json.loads(r["value"])
+        if value.get("ml_enabled"):
+            value["ml_enabled"] = False
+            conn.execute("UPDATE detection_settings SET value = ? WHERE business_id = ?",
+                         (json.dumps(value), r["business_id"]))
+    conn.commit()
 
 
 def _upgrade_to_review_and_teams(conn):

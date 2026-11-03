@@ -48,7 +48,7 @@
 
   <fieldset {% if locked %}disabled{% endif %}>
     <legend>Category spending jump</legend>
-    <div class="field"><label for="spike_multiplier">Flag a day when a category's spending is this many times its daily average</label>
+    <div class="field"><label for="spike_multiplier">Flag a day when a category's spending is this many times a usual day for that category</label>
       <input id="spike_multiplier" name="spike_multiplier" type="number" min="1" step="0.1" value="{{ settings.spike_multiplier }}" style="max-width:200px"></div>
   </fieldset>
 

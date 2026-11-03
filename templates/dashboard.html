@@ -2,6 +2,43 @@
 {% import "_ui.html" as ui with context %}
 {% block title %}Overview{% endblock %}
 {% block content %}
+{% macro team_uploads() %}
+<section class="card section" aria-labelledby="uploads-h">
+  <div class="card-head">
+    <div><h2 id="uploads-h">Uploads from your team</h2>
+      <p>Every file is checked as soon as it arrives. Open one to see its payments.</p></div>
+    {% if can('owner') %}<a href="{{ url_for('team_page') }}">Invite employees</a>{% endif %}
+  </div>
+  {% if uploads %}
+  <ul class="list">
+    {% for u in uploads %}
+    {% set who = u.uploader_name or 'Removed user' %}
+    <li class="upload-row">
+      <span class="avatar" aria-hidden="true">{{ who.split()|map('first')|join('')|upper|truncate(2, true, '') }}</span>
+      <div class="grow">
+        <a class="title" href="{{ url_for('transactions_page', upload=u.id) }}">{{ u.filename }}</a>
+        <span class="meta">{{ who }} · {{ u.uploaded_at|when }} · {{ "{:,}".format(u.rows_imported) }} payments{% if u.rows_skipped %}, {{ u.rows_skipped }} skipped{% endif %}</span>
+      </div>
+      {% if u.waiting %}
+      <a class="pill {{ 'urgent' if u.waiting_high else 'waiting' }}" href="{{ url_for('transactions_page', upload=u.id, flagged=1) }}">
+        {{ u.waiting }} to review{% if u.waiting_high %} · {{ u.waiting_high }} high{% endif %}</a>
+      {% else %}
+      <span class="pill clear">{{ ui.icon('check') }} Nothing waiting</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {{ ui.empty("No files yet. Employees who join with your business code can upload them for you.", icon_name="upload") }}
+  {% endif %}
+  {% if can('owner') and not employees %}
+  <div class="notice info" style="margin:16px 0 0">{{ ui.icon('users') }}
+    <p>Let staff upload files for you: they sign up as <b>Employee</b> and enter your business code
+       <b class="num">{{ current_business.join_code }}</b>. They won't see this dashboard.</p></div>
+  {% endif %}
+</section>
+{% endmacro %}
+
 {% set open = by_status.get('new', 0) %}
 <div class="page-head">
   <div>
@@ -21,9 +58,10 @@
 
 {% if not overview %}
 <div class="card">
-  {{ ui.empty("Upload a CSV of your payments and Treasury Guard will check every one of them.",
-              url_for('upload_page') if can('owner') else None, "Upload transactions", "upload") }}
+  {{ ui.empty("Upload a CSV of your payments, or have an employee upload it, and Treasury Guard will check every one of them.",
+              url_for('upload_page') if can_upload else None, "Upload transactions", "upload") }}
 </div>
+{{ team_uploads() }}
 {% else %}
 
 <div class="grid grid-4">
@@ -53,6 +91,8 @@
     <div class="sub">{{ by_status.get('dismissed', 0) }} marked OK · {{ ((total - open) / total * 100)|round|int if total else 0 }}% reviewed</div>
   </div>
 </div>
+
+{{ team_uploads() }}
 
 <div class="grid grid-main section">
   <section class="card" aria-labelledby="trend-h">
@@ -123,7 +163,7 @@
 
 <section class="card section" aria-labelledby="checks-h">
   <div class="card-head">
-    <div><h2 id="checks-h">What Treasury Guard checks</h2><p>Every payment goes through these eight checks each time you upload or change a setting.</p></div>
+    <div><h2 id="checks-h">What Treasury Guard checks</h2><p>Every payment goes through these checks each time a file is uploaded or a setting changes.</p></div>
     <a href="{{ url_for('rules') }}">Change settings</a>
   </div>
   <div class="table-wrap">

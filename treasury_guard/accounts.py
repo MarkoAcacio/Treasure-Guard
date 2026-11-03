@@ -1,5 +1,6 @@
 """User registration, login and business profiles."""
 import re
+import secrets
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -13,6 +14,8 @@ DEFAULT_CATEGORIES = (
 )
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD_LENGTH = 8
+JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I, so codes are easy to read out
+JOIN_CODE_LENGTH = 8
 
 
 class AccountError(ValueError):
@@ -23,25 +26,42 @@ def _clean(value):
     return (value or "").strip()
 
 
-def register_owner(conn, email, password, full_name, business_name, business_type="Other"):
-    """Create a user and their business. Returns (user_id, business_id)."""
+def _check_new_user(conn, email, password, full_name):
+    """Validate sign-up details shared by owners and employees. Returns the cleaned (email, full_name)."""
     email = _clean(email).lower()
     full_name = _clean(full_name)
-    business_name = _clean(business_name)
-    business_type = _clean(business_type) or "Other"
-
     if not EMAIL_RE.match(email):
         raise AccountError("Enter a valid email address.")
     if len(password or "") < MIN_PASSWORD_LENGTH:
         raise AccountError(f"Use a password with at least {MIN_PASSWORD_LENGTH} characters.")
     if not full_name:
         raise AccountError("Enter your full name.")
+    if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+        raise AccountError("An account with this email already exists. Log in instead.")
+    return email, full_name
+
+
+def new_join_code(conn):
+    """A code the owner shares so employees can join the business when they sign up."""
+    while True:
+        code = "".join(secrets.choice(JOIN_CODE_ALPHABET) for _ in range(JOIN_CODE_LENGTH))
+        if not conn.execute("SELECT 1 FROM businesses WHERE join_code = ?", (code,)).fetchone():
+            return code
+
+
+def normalize_join_code(code):
+    return re.sub(r"[^A-Z0-9]", "", (code or "").upper())
+
+
+def register_owner(conn, email, password, full_name, business_name, business_type="Other"):
+    """Create a business owner (admin) and their business. Returns (user_id, business_id)."""
+    business_name = _clean(business_name)
+    business_type = _clean(business_type) or "Other"
+    email, full_name = _check_new_user(conn, email, password, full_name)
     if not business_name:
         raise AccountError("Enter your business name.")
     if business_type not in BUSINESS_TYPES:
         raise AccountError(f"Business type must be one of: {', '.join(BUSINESS_TYPES)}.")
-    if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
-        raise AccountError("An account with this email already exists. Log in instead.")
 
     created = now()
     user_id = conn.execute(
@@ -49,8 +69,8 @@ def register_owner(conn, email, password, full_name, business_name, business_typ
         (email, generate_password_hash(password), full_name, created),
     ).lastrowid
     business_id = conn.execute(
-        "INSERT INTO businesses (owner_user_id, name, business_type, created_at) VALUES (?, ?, ?, ?)",
-        (user_id, business_name, business_type, created),
+        "INSERT INTO businesses (owner_user_id, name, business_type, created_at, join_code) VALUES (?, ?, ?, ?, ?)",
+        (user_id, business_name, business_type, created, new_join_code(conn)),
     ).lastrowid
     conn.executemany(
         "INSERT INTO categories (business_id, name) VALUES (?, ?)",
@@ -60,6 +80,37 @@ def register_owner(conn, email, password, full_name, business_name, business_typ
                  (business_id, user_id, created))
     conn.commit()
     return user_id, business_id
+
+
+def register_employee(conn, email, password, full_name, join_code):
+    """Create an employee account inside an existing business. Returns (user_id, business_id).
+
+    Employees upload transaction files; only the owner and reviewers/viewers see the results.
+    """
+    code = normalize_join_code(join_code)
+    if not code:
+        raise AccountError("Enter the business code your employer gave you.")
+    business = conn.execute("SELECT id FROM businesses WHERE join_code = ?", (code,)).fetchone()
+    if not business:
+        raise AccountError("No business uses that code. Check it with your employer.")
+    email, full_name = _check_new_user(conn, email, password, full_name)
+    created = now()
+    user_id = conn.execute(
+        "INSERT INTO users (email, password_hash, full_name, created_at) VALUES (?, ?, ?, ?)",
+        (email, generate_password_hash(password), full_name, created),
+    ).lastrowid
+    conn.execute("INSERT INTO members (business_id, user_id, role, added_at) VALUES (?, ?, 'employee', ?)",
+                 (business["id"], user_id, created))
+    conn.commit()
+    return user_id, business["id"]
+
+
+def reset_join_code(conn, business_id):
+    """Give the business a new code (the old one stops working; existing employees keep access)."""
+    code = new_join_code(conn)
+    conn.execute("UPDATE businesses SET join_code = ? WHERE id = ?", (code, business_id))
+    conn.commit()
+    return code
 
 
 def authenticate(conn, email, password):
@@ -85,24 +136,31 @@ def get_business_for_user(conn, user_id):
 
 # ---------- Team members and roles ----------
 
-ROLES = ("owner", "reviewer", "viewer")  # most to least access
+ROLES = ("owner", "reviewer", "viewer")  # most to least access to the dashboard and flags
+EMPLOYEE = "employee"                    # uploads files only; can't see the dashboard, flags or settings
+MEMBER_ROLES = ("reviewer", "viewer", EMPLOYEE)  # roles the owner can give other people
 
 
 def can(role, needed):
-    """True if `role` has at least the access of `needed`."""
+    """True if `role` has at least the access of `needed`. Employees are outside this ladder: always False."""
     return role in ROLES and ROLES.index(role) <= ROLES.index(needed)
+
+
+def can_upload(role):
+    """Owners and employees upload transaction files."""
+    return role in ("owner", EMPLOYEE)
 
 
 def list_members(conn, business_id):
     return [dict(r) for r in conn.execute(
         """SELECT u.id, u.email, u.full_name, m.role, m.added_at FROM members m JOIN users u ON u.id = m.user_id
-           WHERE m.business_id = ? ORDER BY m.role = 'owner' DESC, u.full_name""", (business_id,))]
+           WHERE m.business_id = ? ORDER BY m.role = 'owner' DESC, m.role = 'employee', u.full_name""", (business_id,))]
 
 
 def add_member(conn, business_id, email, full_name, password, role):
     """Create an account for a team member. They log in with the email and password the owner gives them."""
-    if role not in ("reviewer", "viewer"):
-        raise AccountError("Team members can be reviewers or viewers.")
+    if role not in MEMBER_ROLES:
+        raise AccountError("Team members can be reviewers, viewers or employees.")
     email = _clean(email).lower()
     full_name = _clean(full_name)
     if not EMAIL_RE.match(email):
@@ -125,8 +183,8 @@ def add_member(conn, business_id, email, full_name, password, role):
 
 
 def set_member_role(conn, business_id, user_id, role):
-    if role not in ("reviewer", "viewer"):
-        raise AccountError("Team members can be reviewers or viewers.")
+    if role not in MEMBER_ROLES:
+        raise AccountError("Team members can be reviewers, viewers or employees.")
     cur = conn.execute("UPDATE members SET role = ? WHERE business_id = ? AND user_id = ? AND role != 'owner'",
                        (role, business_id, user_id))
     conn.commit()

@@ -83,27 +83,35 @@ def find_unusual_payment_sizes(transactions, s, fmt):
     return flags
 
 
-def find_category_spending_jumps(transactions, s, fmt):
-    """A day's spending in a category compared with that category's average daily spending for the month.
+MIN_ACTIVE_DAYS = 3  # a category needs spending on this many days in the month before a jump can be judged
 
-    Monthly daily average = category total for the month / number of days in the data for that month.
+
+def find_category_spending_jumps(transactions, s, fmt):
+    """A day's spending in a category compared with a usual day of spending in that category that month.
+
+    Usual day = category total for the month / number of days that month with spending in that category.
+    (Days with no spending in the category don't count: otherwise any ordinary purchase in a category
+    bought only now and then looks like a jump. That made this check flag about half of all payments.)
     """
-    days_in_month = defaultdict(set)
+    active_days = defaultdict(set)
     month_total = defaultdict(float)
     day_total = defaultdict(float)
     day_txns = defaultdict(list)
     for t in transactions:
         day = t["timestamp"].date()
-        month = day.strftime("%Y-%m")
-        days_in_month[month].add(day)
-        month_total[(month, t["category"])] += t["amount"]
+        key = (day.strftime("%Y-%m"), t["category"])
+        active_days[key].add(day)
+        month_total[key] += t["amount"]
         day_total[(day, t["category"])] += t["amount"]
         day_txns[(day, t["category"])].append(t)
 
     flags = []
     for (day, category), total in sorted(day_total.items()):
         month = day.strftime("%Y-%m")
-        average = month_total[(month, category)] / len(days_in_month[month])
+        days = len(active_days[(month, category)])
+        if days < MIN_ACTIVE_DAYS:
+            continue
+        average = month_total[(month, category)] / days
         ratio = total / average
         if ratio >= s["spike_multiplier"]:
             txns = day_txns[(day, category)]
@@ -111,10 +119,10 @@ def find_category_spending_jumps(transactions, s, fmt):
             flag = _flag(
                 f"spike-{category}-{day.isoformat()}", "spike", first,
                 (f"{category} spending on {day.strftime('%b %d, %Y')} was {fmt(total)} across {len(txns)} payments, "
-                 f"{round(ratio, 2):g}x your usual daily {category} spending for {day.strftime('%B %Y')} "
-                 f"({fmt(average)} a day)."),
+                 f"{round(ratio, 2):g}x a usual {category} day in {day.strftime('%B %Y')} "
+                 f"({fmt(average)} on the {days} days you spent on {category})."),
                 {"day_total": round(total, 2), "daily_average": round(average, 2), "ratio": round(ratio, 2),
-                 "multiplier": s["spike_multiplier"], "payments": len(txns)},
+                 "multiplier": s["spike_multiplier"], "payments": len(txns), "active_days": days},
                 txn_ids=[t["id"] for t in txns], amount=round(total, 2),
             )
             flag.update(occurred_at=day.isoformat(), counterparty=None, merchant=None)

@@ -16,7 +16,17 @@ def find_anomalies(transactions, settings, currency="PHP"):
     found = (run_rule_checks(transactions, settings, fmt)
              + run_statistical_checks(transactions, settings, fmt)
              + run_ai_checks(transactions, settings, fmt))
-    return score_flags(found)
+    return score_flags(keep_supported_unusual_flags(found))
+
+
+def keep_supported_unusual_flags(found):
+    """Show an "Unusual pattern" (Isolation Forest) flag only when another check also flagged the payment.
+
+    On its own, Isolation Forest raised far more false alarms than real problems (precision about 4%
+    on the test data), so it now backs up the other checks instead of raising alarms by itself.
+    """
+    supported = {txn_id for f in found if f["type"] != "ml" for txn_id in f["txn_ids"]}
+    return [f for f in found if f["type"] != "ml" or supported.intersection(f["txn_ids"])]
 
 
 def run_detection(conn, business_id):

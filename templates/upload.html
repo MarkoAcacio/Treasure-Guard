@@ -3,11 +3,31 @@
 {% block title %}Upload CSV{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Upload transactions</h1><p>Every payment is checked as soon as the file is in.</p></div>
+  <div><h1>Upload transactions</h1>
+    <p>{% if is_employee %}Your files go to {{ owner_name }}, who checks anything unusual.
+       {% else %}Every payment is checked as soon as the file is in.{% endif %}</p></div>
 </div>
 {% if error %}<div class="notice error" role="alert"><p>{{ error }}</p></div>{% endif %}
 
-{% if summary %}
+{% if summary and is_employee %}
+<section class="card" aria-labelledby="done-h" style="margin-bottom:16px">
+  <div class="sent">
+    <span class="type-icon">{{ ui.icon('check') }}</span>
+    <div>
+      <h2 id="done-h" style="margin-bottom:4px">Sent: {{ summary.filename }}</h2>
+      <p class="muted">{{ summary.rows_imported }} of {{ summary.rows_total }} rows imported. {{ owner_name }} can see them now and will be alerted to anything unusual.</p>
+      {% if summary.rows_skipped_already_imported %}<p class="muted">{{ summary.rows_skipped_already_imported }} rows were already uploaded before, so they were skipped.</p>{% endif %}
+    </div>
+  </div>
+  {% if summary.errors %}
+  <h3 style="margin:12px 0 6px">Rows that were skipped</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Line</th><th>Problem</th></tr></thead>
+    <tbody>{% for e in summary.errors %}<tr><td>{{ e.line }}</td><td>{{ e.problems | join('; ') }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% elif summary %}
 <section class="card" aria-labelledby="done-h" style="margin-bottom:16px">
   <h2 id="done-h" style="margin-bottom:10px">Upload complete: {{ summary.filename }}</h2>
   <div class="grid grid-2">
@@ -57,7 +77,7 @@
     </table></div>
     {% if preview.ignored_columns %}<p class="muted" style="margin-top:10px">Not used (left out and never stored): {{ preview.ignored_columns | join(', ') }}</p>{% endif %}
     <div class="actions" style="margin-top:12px">
-      <button class="btn btn-primary" type="submit">Import and check for anomalies</button>
+      <button class="btn btn-primary" type="submit">{{ 'Import and send' if is_employee else 'Import and check for anomalies' }}</button>
       <a class="btn btn-ghost" href="{{ url_for('upload_page') }}">Choose a different file</a>
     </div>
   </form>
@@ -85,21 +105,24 @@
       Add the time of each payment if you have it: the fraud model is more accurate with it.</p>
     <div class="actions">
       <a class="btn" href="{{ url_for('template_csv') }}">{{ ui.icon('download') }} Download a template</a>
-      <form method="post" action="{{ url_for('upload_demo') }}"><button class="btn btn-ghost" type="submit">Load sample data</button></form>
+      {% if can('owner') %}<form method="post" action="{{ url_for('upload_demo') }}"><button class="btn btn-ghost" type="submit">Load sample data</button></form>{% endif %}
     </div>
   </section>
 </div>
 {% endif %}
 
 <section class="card" aria-labelledby="past-h">
-  <h2 id="past-h" style="margin-bottom:8px">Past uploads</h2>
+  <h2 id="past-h" style="margin-bottom:8px">{{ 'Your uploads' if is_employee else 'Past uploads' }}</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>When</th><th>File</th><th class="num">Imported</th><th class="num">Skipped</th></tr></thead>
+    <thead><tr><th>When</th><th>File</th>{% if not is_employee %}<th>Uploaded by</th>{% endif %}<th class="num">Imported</th><th class="num">Skipped</th></tr></thead>
     <tbody>
     {% for u in uploads %}
-    <tr><td class="muted">{{ u.uploaded_at|when }}</td><td>{{ u.filename }}</td><td class="num">{{ u.rows_imported }}</td><td class="num">{{ u.rows_skipped }}</td></tr>
+    <tr><td class="muted">{{ u.uploaded_at|when }}</td>
+      <td>{% if is_employee %}{{ u.filename }}{% else %}<a href="{{ url_for('transactions_page', upload=u.id) }}">{{ u.filename }}</a>{% endif %}</td>
+      {% if not is_employee %}<td>{{ u.uploader_name or '—' }}</td>{% endif %}
+      <td class="num">{{ u.rows_imported }}</td><td class="num">{{ u.rows_skipped }}</td></tr>
     {% else %}
-    <tr><td colspan="4" class="muted">No uploads yet.</td></tr>
+    <tr><td colspan="{{ 4 if is_employee else 5 }}" class="muted">No uploads yet.</td></tr>
     {% endfor %}
     </tbody>
   </table></div>

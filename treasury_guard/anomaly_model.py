@@ -21,7 +21,7 @@ import joblib
 import sklearn
 
 from .preprocessing import build_features, clean_transactions, has_times
-from .training import BUNDLE_PATH, CARD_PATH, MODEL_VERSION
+from .training import BUNDLE_PATH, CARD_PATH, MODEL_VERSION, with_unusual_score
 
 log = logging.getLogger(__name__)
 
@@ -80,8 +80,13 @@ def score_transactions(transactions):
     rows, context = build_features(txns, use_time=variant == "with_time", fill_change=model["fill_change"])
     if not rows:
         return variant, model, []
-    probabilities = model["classifier"].predict_proba(rows)[:, 1]
-    unusual = [float(s) for s in -model["iforest"].score_samples(rows)]
+    if model.get("classifier_uses_unusual_score"):
+        inputs = with_unusual_score(rows, model["iforest"])
+        probabilities = model["classifier"].predict_proba(inputs)[:, 1]
+        unusual = [float(s) for s in inputs[:, -1]]
+    else:
+        probabilities = model["classifier"].predict_proba(rows)[:, 1]
+        unusual = [float(s) for s in -model["iforest"].score_samples(rows)]
     ranked = sorted(unusual)
     results = []
     for t, p, s, row, c in zip(txns, probabilities, unusual, rows, context):
@@ -124,6 +129,20 @@ def explain(t, row, c, model, fmt):
             phrases.append(f"the same payee was paid only {c['gap_hours']:.1f} hours before")
         elif name == "change_from_last_payment" and above:
             phrases.append("it is very different from the last payment to this payee")
+        elif name == "new_payee" and above:
+            phrases.append("it is the first payment to this payee")
+        elif name == "amount_vs_payee" and c.get("payee_typical"):
+            ratio = t["amount"] / c["payee_typical"]
+            phrases.append(f"it is {ratio:.1f}x your usual payment to this payee of {fmt(c['payee_typical'])}"
+                           if above else
+                           f"it is only {ratio * 100:.0f}% of your usual payment to this payee")
+        elif name == "spend_7d_vs_usual" and above:
+            phrases.append(f"your spending in the last 7 days ({fmt(c['spend_7d'])}) is "
+                           f"{c['spend_7d'] / c['usual_week_spend']:.1f}x a usual week")
+        elif name == "new_payees_24h" and above and c["new_payees_24h"]:
+            phrases.append(f"{c['new_payees_24h']} other new payees were paid in the 24 hours before")
+        elif name == "night_payments_7d" and above and c["night_7d"]:
+            phrases.append(f"{c['night_7d']} payments were made late at night in the past 7 days")
         elif name == "payments_same_payee_24h" and above:
             phrases.append(f"it is payment number {c['same_payee_24h'] + 1} to this payee within 24 hours")
         elif name == "burst_vs_usual_day" and above:
@@ -146,7 +165,7 @@ def _flag(key, kind, t, reason, details):
 def run_ai_checks(transactions, settings, fmt):
     """Flags from both models. Skipped (empty) if disabled, too few payments, or no model."""
     wants_fraud = settings.get("fraud_model_enabled", True)
-    wants_unusual = settings.get("ml_enabled", True)
+    wants_unusual = settings.get("ml_enabled", False)
     if not (wants_fraud or wants_unusual) or len(transactions) < MIN_PAYMENTS:
         return []
     try:

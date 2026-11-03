@@ -1,0 +1,275 @@
+{
+  "model_version": 4,
+  "sklearn_version": "1.9.1",
+  "trained_at": "2026-10-27T00:54:52",
+  "models": {
+    "isolation_forest": {
+      "type": "IsolationForest",
+      "parameters": {
+        "n_estimators": 200,
+        "max_samples": 512,
+        "random_state": 42
+      },
+      "uses_labels": false,
+      "fit_rows": 300000
+    },
+    "fraud_classifier": {
+      "type": "HistGradientBoostingClassifier",
+      "parameters": {
+        "max_iter": 400,
+        "learning_rate": 0.08,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 1.0,
+        "early_stopping": true,
+        "validation_fraction": 0.1,
+        "random_state": 42
+      },
+      "uses_labels": true
+    }
+  },
+  "training_data": {
+    "dataset": "https://www.kaggle.com/datasets/kartik2112/fraud-detection",
+    "description": "Simulated US credit card transactions (Sparkov). Each card is treated as one business.",
+    "train_file": "fraudTrain.csv (2019-01-01 to 2020-06-21)",
+    "test_file": "fraudTest.csv (2020-06-21 to 2020-12-31)",
+    "columns_used": {
+      "trans_date_trans_time": "Date and time of the payment",
+      "amt": "Amount (USD, converted to PHP)",
+      "cc_num": "Card number; groups payments into one 'business' (never stored or shown)",
+      "merchant": "Payee",
+      "category": "Category",
+      "is_fraud": "Fraud label; the target for the fraud model and for evaluation only"
+    },
+    "columns_dropped": {
+      "first, last, gender, dob, job": "Personal details of the cardholder, not payment behaviour.",
+      "street, city, state, zip, lat, long, city_pop": "Home address and location; not in MSME payment records.",
+      "merch_lat, merch_long": "Merchant location; not in MSME payment records.",
+      "trans_num, unix_time, Unnamed: 0": "IDs and a duplicate of the timestamp."
+    },
+    "currency": "USD converted to PHP at 62.879 (2026-10-14); features are scale-free",
+    "rows": {
+      "with_time": {
+        "train_rows": 1296675,
+        "train_fraud": 7506
+      },
+      "date_only": {
+        "train_rows": 1296675,
+        "train_fraud": 7506
+      }
+    }
+  },
+  "variants": {
+    "with_time": {
+      "features": [
+        "amount_vs_usual",
+        "amount_vs_category",
+        "hours_since_same_payee",
+        "change_from_last_payment",
+        "payments_same_payee_24h",
+        "burst_vs_usual_day",
+        "hour_sin",
+        "hour_cos"
+      ],
+      "threshold": 0.3125308677179864,
+      "feature_stats": {
+        "amount_vs_usual": {
+          "median": 0.0,
+          "iqr": 1.984784558631684,
+          "min": -4.924853854261536,
+          "max": 6.6442310589270885
+        },
+        "amount_vs_category": {
+          "median": 0.0,
+          "iqr": 0.9755426405158901,
+          "min": -45.730491779321575,
+          "max": 23.683229447069987
+        },
+        "hours_since_same_payee": {
+          "median": 4.290459441148391,
+          "iqr": 1.0,
+          "min": 0.0016652793190612104,
+          "max": 4.290459441148391
+        },
+        "change_from_last_payment": {
+          "median": 0.5893747983427363,
+          "iqr": 0.49739146065528483,
+          "min": 0.0,
+          "max": 9.5136597849815
+        },
+        "payments_same_payee_24h": {
+          "median": 0.0,
+          "iqr": 1.0,
+          "min": 0.0,
+          "max": 1.0986122886681098
+        },
+        "burst_vs_usual_day": {
+          "median": 0.030555146049642934,
+          "iqr": 0.7200452312558158,
+          "min": -2.943805545624051,
+          "max": 1.881673475629726
+        },
+        "hour_sin": {
+          "median": -0.2714404498650743,
+          "iqr": 1.3359351183941166,
+          "min": -1.0,
+          "max": 1.0
+        },
+        "hour_cos": {
+          "median": 0.004363309284746582,
+          "iqr": 1.4172651736101498,
+          "min": -1.0,
+          "max": 1.0
+        }
+      }
+    },
+    "date_only": {
+      "features": [
+        "amount_vs_usual",
+        "amount_vs_category",
+        "hours_since_same_payee",
+        "change_from_last_payment",
+        "payments_same_payee_24h",
+        "burst_vs_usual_day"
+      ],
+      "threshold": 0.23932797544233247,
+      "feature_stats": {
+        "amount_vs_usual": {
+          "median": 0.0,
+          "iqr": 1.984784558631684,
+          "min": -4.924853854261536,
+          "max": 6.6442310589270885
+        },
+        "amount_vs_category": {
+          "median": 0.0,
+          "iqr": 0.9755426405158901,
+          "min": -45.730491779321575,
+          "max": 23.683229447069987
+        },
+        "hours_since_same_payee": {
+          "median": 4.290459441148391,
+          "iqr": 1.0,
+          "min": 0.0,
+          "max": 4.290459441148391
+        },
+        "change_from_last_payment": {
+          "median": 0.5893697999668754,
+          "iqr": 0.4973857779898083,
+          "min": 0.0,
+          "max": 9.5136597849815
+        },
+        "payments_same_payee_24h": {
+          "median": 0.0,
+          "iqr": 1.0,
+          "min": 0.0,
+          "max": 1.0986122886681098
+        },
+        "burst_vs_usual_day": {
+          "median": 0.3192105351133232,
+          "iqr": 0.6503690585471412,
+          "min": -2.995732273553991,
+          "max": 2.1674392741661697
+        }
+      }
+    }
+  },
+  "evaluation": {
+    "with_time": {
+      "test_rows": 555719,
+      "test_fraud": 2145,
+      "fraud_classifier": {
+        "roc_auc": 0.9732,
+        "pr_auc": 0.4819,
+        "threshold": 0.3125,
+        "at_threshold": {
+          "precision": 0.49,
+          "recall": 0.601,
+          "f1": 0.54,
+          "flagged": 2632,
+          "true_positives": 1289,
+          "false_positives": 1343,
+          "missed_fraud": 856
+        }
+      },
+      "isolation_forest": {
+        "roc_auc": 0.8528,
+        "pr_auc": 0.0312,
+        "at_97th_percentile_per_business": {
+          "precision": 0.039,
+          "recall": 0.297,
+          "f1": 0.069,
+          "flagged": 16226,
+          "true_positives": 637,
+          "false_positives": 15589,
+          "missed_fraud": 1508
+        }
+      },
+      "baseline_rule_amount_top_1pct_per_business": {
+        "precision": 0.11,
+        "recall": 0.264,
+        "f1": 0.156,
+        "flagged": 5141,
+        "true_positives": 567,
+        "false_positives": 4574,
+        "missed_fraud": 1578
+      },
+      "combined_classifier_or_isolation_forest": {
+        "precision": 0.079,
+        "recall": 0.657,
+        "f1": 0.141,
+        "flagged": 17791,
+        "true_positives": 1410,
+        "false_positives": 16381,
+        "missed_fraud": 735
+      }
+    },
+    "date_only": {
+      "test_rows": 555719,
+      "test_fraud": 2145,
+      "fraud_classifier": {
+        "roc_auc": 0.9474,
+        "pr_auc": 0.3268,
+        "threshold": 0.2393,
+        "at_threshold": {
+          "precision": 0.293,
+          "recall": 0.499,
+          "f1": 0.369,
+          "flagged": 3653,
+          "true_positives": 1071,
+          "false_positives": 2582,
+          "missed_fraud": 1074
+        }
+      },
+      "isolation_forest": {
+        "roc_auc": 0.8687,
+        "pr_auc": 0.0335,
+        "at_97th_percentile_per_business": {
+          "precision": 0.043,
+          "recall": 0.323,
+          "f1": 0.075,
+          "flagged": 16226,
+          "true_positives": 692,
+          "false_positives": 15534,
+          "missed_fraud": 1453
+        }
+      },
+      "baseline_rule_amount_top_1pct_per_business": {
+        "precision": 0.11,
+        "recall": 0.264,
+        "f1": 0.156,
+        "flagged": 5141,
+        "true_positives": 567,
+        "false_positives": 4574,
+        "missed_fraud": 1578
+      },
+      "combined_classifier_or_isolation_forest": {
+        "precision": 0.072,
+        "recall": 0.618,
+        "f1": 0.129,
+        "flagged": 18352,
+        "true_positives": 1326,
+        "false_positives": 17026,
+        "missed_fraud": 819
+      }
+    }
+  }
+}
